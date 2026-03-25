@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from src.predict import predict_diabetes
+from src.predict.predict_diabetes import predict_diabetes
 
 SMOKING_OPTIONS = {
     "Never": "never",
