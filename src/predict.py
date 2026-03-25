@@ -5,14 +5,16 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import joblib
+import numpy as np
 import pandas as pd
 
-from src.feature_builder import build_diabetes_features
+from src.feature_builder import DEFAULT_FEATURE_ORDER, build_diabetes_features
 
 MODEL_DIR = Path(__file__).resolve().parent.parent / "models"
 MODEL_PATH = MODEL_DIR / "diabetes_model.pkl"
 THRESHOLD_PATH = MODEL_DIR / "diabetes_threshold.pkl"
 SCALER_PATH = MODEL_DIR / "diabetes_scaler.pkl"
+_SCALED_MODEL_CLASS_NAMES = {"LogisticRegression", "SVC"}
 
 
 @lru_cache(maxsize=1)
@@ -28,17 +30,36 @@ def load_diabetes_artifacts() -> tuple[Any, float, Any | None]:
     return model, threshold, scaler
 
 
+def _infer_feature_order(model: Any, scaler: Any | None) -> list[str]:
+    if scaler is not None and hasattr(scaler, "feature_names_in_"):
+        return list(scaler.feature_names_in_)
+    if hasattr(model, "feature_names_in_"):
+        return list(model.feature_names_in_)
+    return list(DEFAULT_FEATURE_ORDER)
+
+
+def _requires_scaling(model: Any, scaler: Any | None) -> bool:
+    if scaler is None:
+        return False
+    return model.__class__.__name__ in _SCALED_MODEL_CLASS_NAMES
+
+
 def predict_diabetes(user_input: Mapping[str, Any]) -> dict[str, Any]:
     model, threshold, scaler = load_diabetes_artifacts()
-    features_df = build_diabetes_features(user_input)
+    feature_order = _infer_feature_order(model, scaler)
+    features_df = build_diabetes_features(user_input, feature_order=feature_order)
 
     model_input = features_df
-    if scaler is not None:
+    uses_scaler = _requires_scaling(model, scaler)
+    if uses_scaler:
         scaled = scaler.transform(features_df)
         model_input = pd.DataFrame(scaled, columns=features_df.columns)
 
     if hasattr(model, "predict_proba"):
         probability = float(model.predict_proba(model_input)[0][1])
+    elif hasattr(model, "decision_function"):
+        score = float(model.decision_function(model_input)[0])
+        probability = float(1.0 / (1.0 + np.exp(-score)))
     else:
         probability = float(model.predict(model_input)[0])
 
@@ -50,4 +71,6 @@ def predict_diabetes(user_input: Mapping[str, Any]) -> dict[str, Any]:
         "probability": probability,
         "threshold": threshold,
         "model_input": features_df.iloc[0].to_dict(),
+        "model_name": model.__class__.__name__,
+        "uses_scaler": uses_scaler,
     }
