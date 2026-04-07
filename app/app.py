@@ -34,6 +34,22 @@ h_model, h_scaler, h_selector, h_thresh, _, h_features = unpack(artifacts["heart
 s_model, s_scaler, s_selector, s_thresh, s_imputer, s_features = unpack(artifacts["stroke"])
 
 h_mappings = artifacts["heart"].get("categorical_mappings", {})
+h_features = h_features or [
+    "age",
+    "bmi",
+    "systolic_bp",
+    "diastolic_bp",
+    "cholesterol_mg_dl",
+    "resting_heart_rate",
+    "smoking_status",
+    "daily_steps",
+    "stress_level",
+    "physical_activity_hours_per_week",
+    "sleep_hours",
+    "family_history",
+    "diet_quality_score",
+    "alcohol_units_per_week",
+]
 
 # ---------------- HELPERS ----------------
 def process_pipeline(x, scaler, selector, imputer=None):
@@ -108,8 +124,12 @@ elif disease == "Heart Disease":
         heart_rate = st.number_input("Resting Heart Rate", 40, 180)
         smoking = st.selectbox("Smoking Status", ["Never", "Former", "Current"])
         steps = st.number_input("Daily Steps", 0, 40000)
+        stress_level = st.slider("Stress Level", 1, 10, 5)
         activity = st.number_input("Physical Activity (hrs/week)", 0.0, 40.0)
+        sleep_hours = st.number_input("Sleep Hours", 0.0, 14.0, 7.0)
+        family_history = st.selectbox("Family History", ["No", "Yes"])
         diet = st.slider("Diet Quality Score", 1, 10, 5)
+        alcohol_units = st.number_input("Alcohol Units/Week", 0.0, 40.0, 0.0)
 
     if st.button("Predict Heart Disease"):
         h_dict = {
@@ -121,8 +141,12 @@ elif disease == "Heart Disease":
             "resting_heart_rate": heart_rate,
             "smoking_status": smoking,
             "daily_steps": steps,
+            "stress_level": stress_level,
             "physical_activity_hours_per_week": activity,
+            "sleep_hours": sleep_hours,
+            "family_history": family_history,
             "diet_quality_score": diet,
+            "alcohol_units_per_week": alcohol_units,
         }
 
         # Apply mappings
@@ -130,7 +154,7 @@ elif disease == "Heart Disease":
             if col in h_dict:
                 h_dict[col] = mapping.get(h_dict[col], 0)
 
-        x = np.array([[h_dict[col] for col in h_features]], dtype=float)
+        x = np.array([[h_dict.get(col, 0) for col in h_features]], dtype=float)
         x = process_pipeline(x, h_scaler, h_selector)
 
         prob = h_model.predict_proba(x)[0][1]
