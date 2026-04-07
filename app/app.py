@@ -109,39 +109,81 @@ st.set_page_config(page_title="AI Health Predictor", layout="wide")
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap');
-    html, body, [class*="css"] {
-        font-family: "Manrope", "Trebuchet MS", "Segoe UI", sans-serif;
+    :root {
+        --accent: #0f766e;
+        --accent-dark: #115e59;
+        --ink: #16333f;
+        --panel: #ffffff;
+        --line: #cfe1dc;
+        --soft: #edf6f4;
     }
-    .stApp {
-        background: radial-gradient(circle at top right, #dff5e8 0%, #f6fbf8 42%, #ffffff 100%);
+    html, body, [class*="css"] {
+        font-family: "Segoe UI", "Trebuchet MS", "Arial", sans-serif;
+        color: var(--ink);
+    }
+    [data-testid="stAppViewContainer"] {
+        background:
+            radial-gradient(1200px 650px at 105% -8%, #d6eef5 0%, rgba(214, 238, 245, 0) 45%),
+            radial-gradient(900px 500px at -10% 0%, #eaf7ef 0%, rgba(234, 247, 239, 0) 40%),
+            linear-gradient(180deg, #f4faf8 0%, #eff6f7 46%, #f8fbff 100%);
+    }
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #e8f2f4 0%, #eff7f6 100%);
+        border-right: 1px solid #d0dfe4;
+    }
+    [data-testid="stSidebar"] * {
+        color: #1c4350;
     }
     .hero {
-        background: linear-gradient(120deg, #123c4a 0%, #1e5f74 55%, #2b7a78 100%);
+        background: linear-gradient(120deg, #0f3c4f 0%, #1d6273 55%, #2f8c7a 100%);
         border-radius: 16px;
-        padding: 22px 24px;
+        padding: 22px 24px 20px 24px;
         color: #ffffff;
         margin-bottom: 18px;
-        box-shadow: 0 12px 28px rgba(18, 60, 74, 0.20);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 14px 30px rgba(16, 61, 84, 0.18);
     }
     .hero h2 {
         margin: 0;
-        font-size: 1.65rem;
-        font-weight: 800;
+        font-size: 1.58rem;
+        font-weight: 700;
         letter-spacing: 0.2px;
     }
     .hero p {
-        margin: 8px 0 0 0;
+        margin: 9px 0 0 0;
         font-size: 0.98rem;
-        opacity: 0.95;
+        opacity: 0.94;
     }
     .panel {
-        background: #ffffff;
-        border: 1px solid #d8e6df;
+        background: var(--panel);
+        border: 1px solid var(--line);
         border-radius: 14px;
-        padding: 10px 16px 4px 16px;
-        box-shadow: 0 6px 18px rgba(30, 95, 116, 0.08);
-        margin-bottom: 14px;
+        padding: 12px 18px 8px 18px;
+        box-shadow: 0 7px 20px rgba(17, 92, 103, 0.08);
+        margin-bottom: 16px;
+    }
+    [data-testid="metric-container"] {
+        background: var(--soft);
+        border: 1px solid #d8e8e2;
+        border-radius: 12px;
+        box-shadow: 0 3px 10px rgba(12, 58, 72, 0.06);
+    }
+    div[data-baseweb="input"] > div,
+    [data-baseweb="select"] > div,
+    div[data-testid="stNumberInput"] input {
+        border-radius: 10px;
+    }
+    div.stButton > button {
+        background: linear-gradient(90deg, var(--accent), #13857d);
+        color: #ffffff;
+        border: 0;
+        border-radius: 10px;
+        padding: 0.56rem 1rem;
+        font-weight: 600;
+    }
+    div.stButton > button:hover {
+        background: linear-gradient(90deg, var(--accent-dark), #0f766e);
+        color: #ffffff;
     }
     </style>
     """,
@@ -152,13 +194,13 @@ st.markdown(
     """
     <div class="hero">
       <h2>AI-Based Disease Risk Prediction System</h2>
-      <p>Production-style multi-model screening for diabetes, cardiovascular risk, and stroke.</p>
+      <p>Clinical risk screening dashboard for diabetes, cardiovascular risk, and stroke.</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-st.sidebar.markdown("## Disease Selector")
+st.sidebar.markdown("## Clinical Models")
 disease = st.sidebar.radio("Choose model", ["Diabetes", "Heart Disease", "Stroke"])
 st.sidebar.caption("Prediction uses saved model artifacts and thresholds.")
 
