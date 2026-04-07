@@ -33,13 +33,33 @@ HEART_FALLBACK_FEATURES = [
     "alcohol_units_per_week",
 ]
 
+LUNG_FALLBACK_FEATURES = [
+    "age",
+    "gender",
+    "smoking",
+    "finger_discoloration",
+    "mental_stress",
+    "exposure_to_pollution",
+    "long_term_illness",
+    "energy_level",
+    "immune_weakness",
+    "breathing_issue",
+    "alcohol_consumption",
+    "throat_discomfort",
+    "oxygen_saturation",
+    "chest_tightness",
+    "family_history",
+    "smoking_family_history",
+    "stress_immune",
+]
+
 # ---------------- LOAD MODELS ----------------
 @st.cache_resource
 def load_models():
     return {
         "diabetes": joblib.load(MODELS_DIR / "diabetes_model.pkl"),
         "heart": joblib.load(MODELS_DIR / "heart_model.pkl"),
-        "stroke": joblib.load(MODELS_DIR / "stroke_model.pkl"),
+        "lung": joblib.load(MODELS_DIR / "lung_model.pkl"),
     }
 
 
@@ -92,17 +112,46 @@ def render_result(prob, pred):
     col_c.metric("Decision", "Positive" if pred else "Negative")
 
 
+def binary_input(label, *, key):
+    value = st.selectbox(label, ["No", "Yes"], key=key)
+    return 1 if value == "Yes" else 0
+
+
+def validate_feature_schema(feature_order, scaler, disease_name):
+    if scaler is None:
+        return None
+    expected = getattr(scaler, "n_features_in_", None)
+    if expected is None:
+        return None
+    if len(feature_order) != expected:
+        return (
+            f"{disease_name} feature schema mismatch: app uses {len(feature_order)} "
+            f"features but scaler expects {expected}."
+        )
+    return None
+
+
 artifacts = load_models()
 
 # ---------------- UNPACK ----------------
 d_model, d_scaler, d_selector, d_thresh, _, d_features_saved = unpack(artifacts["diabetes"])
 h_model, h_scaler, h_selector, h_thresh, _, h_features_saved = unpack(artifacts["heart"])
-s_model, s_scaler, s_selector, s_thresh, s_imputer, s_features_saved = unpack(artifacts["stroke"])
+l_model, l_scaler, l_selector, l_thresh, l_imputer, l_features_saved = unpack(artifacts["lung"])
 
 d_features = resolve_feature_order(d_features_saved, DIABETES_FALLBACK_FEATURES)
 h_features = resolve_feature_order(h_features_saved, HEART_FALLBACK_FEATURES)
-s_features = s_features_saved or []
+l_features = resolve_feature_order(l_features_saved, LUNG_FALLBACK_FEATURES)
 h_mappings = artifacts["heart"].get("categorical_mappings", {})
+
+schema_warnings = []
+for name, features, scaler in [
+    ("Diabetes", d_features, d_scaler),
+    ("Heart Disease", h_features, h_scaler),
+    ("Lung Cancer", l_features, l_scaler),
+]:
+    warning = validate_feature_schema(features, scaler, name)
+    if warning:
+        schema_warnings.append(warning)
 
 # ---------------- UI CONFIG ----------------
 st.set_page_config(page_title="AI Health Predictor", layout="wide")
@@ -194,15 +243,17 @@ st.markdown(
     """
     <div class="hero">
       <h2>AI-Based Disease Risk Prediction System</h2>
-      <p>Clinical risk screening dashboard for diabetes, cardiovascular risk, and stroke.</p>
+      <p>Clinical risk screening dashboard for diabetes, cardiovascular risk, and lung cancer.</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
 st.sidebar.markdown("## Clinical Models")
-disease = st.sidebar.radio("Choose model", ["Diabetes", "Heart Disease", "Stroke"])
+disease = st.sidebar.radio("Choose model", ["Diabetes", "Heart Disease", "Lung Cancer"])
 st.sidebar.caption("Prediction uses saved model artifacts and thresholds.")
+for warning in schema_warnings:
+    st.sidebar.warning(warning)
 
 # ---------------- DIABETES ----------------
 if disease == "Diabetes":
@@ -291,43 +342,60 @@ elif disease == "Heart Disease":
             st.error(f"Prediction failed: {exc}")
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------------- STROKE ----------------
-elif disease == "Stroke":
+# ---------------- LUNG ----------------
+elif disease == "Lung Cancer":
     st.markdown('<div class="panel">', unsafe_allow_html=True)
-    st.subheader("Stroke Risk Prediction")
+    st.subheader("Lung Cancer Risk Prediction")
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
-        sex = st.selectbox("Sex", [0, 1], help="Encoded numeric value")
-        age = st.number_input("Age", 1, 120, 50)
-        hypertension = st.selectbox("Hypertension", [0, 1], help="0 = No, 1 = Yes")
-        heart_disease = st.selectbox("Heart Disease", [0, 1], help="0 = No, 1 = Yes")
-        married = st.selectbox("Ever Married", [0, 1], help="0 = No, 1 = Yes")
+        age = st.number_input("Age", min_value=1, max_value=120, value=45)
+        gender = st.selectbox("Gender", ["Female", "Male"])
+        smoking = binary_input("Smoking", key="lung_smoking")
+        finger_discoloration = binary_input("Finger Discoloration", key="lung_finger")
+        mental_stress = binary_input("Mental Stress", key="lung_stress")
+        exposure_to_pollution = binary_input("Exposure To Pollution", key="lung_pollution")
     with col2:
-        work = st.selectbox("Work Type", [0, 1, 2, 3, 4])
-        residence_type = st.selectbox("Residence Type", [0, 1], help="Encoded numeric value")
-        glucose = st.number_input("Average Glucose Level", 40.0, 400.0, 105.0)
-        bmi = st.number_input("BMI", 10.0, 60.0, 26.0)
-        smoking = st.selectbox("Smoking Status", [0, 1], help="Using dataset-consistent values")
+        long_term_illness = binary_input("Long-Term Illness", key="lung_long_term")
+        immune_weakness = binary_input("Immune Weakness", key="lung_immune")
+        breathing_issue = binary_input("Breathing Issue", key="lung_breathing")
+        alcohol_consumption = binary_input("Alcohol Consumption", key="lung_alcohol")
+        throat_discomfort = binary_input("Throat Discomfort", key="lung_throat")
+        chest_tightness = binary_input("Chest Tightness", key="lung_chest")
+    with col3:
+        family_history = binary_input("Family History", key="lung_family")
+        smoking_family_history = binary_input("Smoking Family History", key="lung_smoking_family")
+        stress_immune = binary_input("Stress-Immune Indicator", key="lung_stress_immune")
+        energy_level = st.number_input("Energy Level", min_value=0.0, max_value=100.0, value=55.0)
+        oxygen_saturation = st.number_input(
+            "Oxygen Saturation", min_value=70.0, max_value=100.0, value=95.0
+        )
 
-    if st.button("Predict Stroke", type="primary"):
+    if st.button("Predict Lung Cancer", type="primary"):
         try:
-            s_dict = {
-                "sex": sex,
+            l_dict = {
                 "age": age,
-                "hypertension": hypertension,
-                "heart_disease": heart_disease,
-                "ever_married": married,
-                "work_type": work,
-                "residence_type": residence_type,
-                "avg_glucose_level": glucose,
-                "bmi": bmi,
-                "smoking_status": smoking,
+                "gender": 1 if gender == "Male" else 0,
+                "smoking": smoking,
+                "finger_discoloration": finger_discoloration,
+                "mental_stress": mental_stress,
+                "exposure_to_pollution": exposure_to_pollution,
+                "long_term_illness": long_term_illness,
+                "energy_level": energy_level,
+                "immune_weakness": immune_weakness,
+                "breathing_issue": breathing_issue,
+                "alcohol_consumption": alcohol_consumption,
+                "throat_discomfort": throat_discomfort,
+                "oxygen_saturation": oxygen_saturation,
+                "chest_tightness": chest_tightness,
+                "family_history": family_history,
+                "smoking_family_history": smoking_family_history,
+                "stress_immune": stress_immune,
             }
-            x = ordered_array_from_dict(s_dict, s_features)
-            x = process_pipeline(x, s_scaler, s_selector, s_imputer)
-            prob = s_model.predict_proba(x)[0][1]
-            pred = int(prob >= s_thresh)
+            x = ordered_array_from_dict(l_dict, l_features)
+            x = process_pipeline(x, l_scaler, l_selector, l_imputer)
+            prob = l_model.predict_proba(x)[0][1]
+            pred = int(prob >= l_thresh)
             render_result(prob, pred)
         except Exception as exc:
             st.error(f"Prediction failed: {exc}")
