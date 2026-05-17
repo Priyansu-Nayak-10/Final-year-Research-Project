@@ -403,12 +403,6 @@ def load_model_bundle(disease_key: str) -> Dict[str, Any]:
         if component_path.exists():
             bundle[key] = joblib.load(component_path)
 
-    # If no standalone scaler/encoders are present, use preprocessor as unified pipeline.
-    if "scaler" not in bundle:
-        bundle["scaler"] = bundle["preprocessor"]
-    if "encoders" not in bundle:
-        bundle["encoders"] = bundle["preprocessor"]
-
     return bundle
 
 
@@ -522,7 +516,7 @@ def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> T
     selector = bundle["selector"]
     threshold = float(bundle.get("threshold", 0.5))
 
-    input_cols = bundle.get("numeric_cols", []) + bundle.get("categorical_cols", [])
+    input_cols = bundle.get("features", bundle.get("numeric_cols", []) + bundle.get("categorical_cols", []))
     input_df = pd.DataFrame([inputs])
 
     # Step 1: Encode categorical + scale numerical features.
@@ -538,19 +532,14 @@ def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> T
     return prediction, probability, threshold
 
 
-def risk_level_from_probability(probability: float) -> str:
-    if probability < 0.35:
-        return "Low Risk"
-    if probability < 0.65:
-        return "Moderate Risk"
-    return "High Risk"
+def risk_level_from_probability(prediction: int) -> str:
+    """Convert binary model prediction to risk level label."""
+    return "High Risk" if prediction == 1 else "Low Risk"
 
 
 def risk_class_for_css(risk_level: str) -> str:
     if risk_level == "Low Risk":
         return "risk-low"
-    if risk_level == "Moderate Risk":
-        return "risk-moderate"
     return "risk-high"
 
 
@@ -563,14 +552,6 @@ def get_health_recommendations(risk_level: str, disease_name: str) -> List[str]:
             "Track blood markers regularly and reduce lifestyle stress.",
         ]
 
-    if risk_level == "Moderate Risk":
-        return [
-            "Improve meal quality with more fiber and vegetables.",
-            "Increase physical activity and reduce sedentary hours.",
-            "Maintain healthy sleep (7-8 hours) and hydration.",
-            "Schedule periodic health checkups every few months.",
-        ]
-
     return [
         "Continue a balanced diet and active routine.",
         "Maintain healthy body weight and stress management.",
@@ -580,12 +561,11 @@ def get_health_recommendations(risk_level: str, disease_name: str) -> List[str]:
 
 
 def render_result_card(prediction: int, probability: float, disease_name: str, threshold: float) -> None:
-    risk_level = risk_level_from_probability(probability)
+    risk_level = risk_level_from_probability(prediction)
     css_class = risk_class_for_css(risk_level)
 
     interpretation_map = {
         "Low Risk": f"Current model indicates relatively low {disease_name.lower()} risk.",
-        "Moderate Risk": f"Current model indicates moderate {disease_name.lower()} risk. Lifestyle correction is advised.",
         "High Risk": f"Current model indicates high {disease_name.lower()} risk. Clinical consultation is strongly recommended.",
     }
 
