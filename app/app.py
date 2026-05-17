@@ -173,43 +173,6 @@ MODEL_FILES = {
     "heart": "heart_model.pkl",
 }
 
-# These defaults are used to auto-fill non-selected features so pipeline stays consistent.
-DIABETES_DEFAULTS = {
-    "age": 53.0,
-    "gender": "Female",
-    "bmi": 32.75,
-    "blood_pressure": 144.0,
-    "fasting_glucose_level": 96.0,
-    "insulin_level": 13.8,
-    "HbA1c_level": 5.5,
-    "cholesterol_level": 217.0,
-    "triglycerides_level": 173.0,
-    "physical_activity_level": "Low",
-    "daily_calorie_intake": 2385.0,
-    "sugar_intake_grams_per_day": 58.3,
-    "sleep_hours": 7.1,
-    "stress_level": 5.0,
-    "family_history_diabetes": "No",
-    "waist_circumference_cm": 104.6,
-}
-
-HEART_DEFAULTS = {
-    "age": 54.0,
-    "bmi": 28.4,
-    "systolic_bp": 147.0,
-    "diastolic_bp": 96.0,
-    "cholesterol_mg_dl": 240.0,
-    "resting_heart_rate": 74.0,
-    "smoking_status": "Never",
-    "daily_steps": 5460.0,
-    "stress_level": 5.0,
-    "physical_activity_hours_per_week": 2.6,
-    "sleep_hours": 6.9,
-    "family_history_heart_disease": "No",
-    "diet_quality_score": 5.0,
-    "alcohol_units_per_week": 2.8,
-}
-
 FEATURE_UI_CONFIG = {
     "age": {
         "label": "Age",
@@ -435,10 +398,6 @@ def load_model_bundle(disease_key: str) -> Dict[str, Any]:
 
 
 # Helper Functions
-def get_defaults_for_disease(disease_key: str) -> Dict[str, Any]:
-    return DIABETES_DEFAULTS if disease_key == "diabetes" else HEART_DEFAULTS
-
-
 def is_missing(value: Any) -> bool:
     return value is None or value == "Select"
 
@@ -472,7 +431,7 @@ def resolve_raw_selected_features(bundle: Dict[str, Any]) -> List[str]:
     return raw_selected
 
 
-def build_input_form(feature_list: List[str], defaults: Dict[str, Any], form_key: str) -> Dict[str, Any]:
+def build_input_form(feature_list: List[str], form_key: str) -> Dict[str, Any]:
     """Render a dynamic input form using selected raw features only."""
     user_values: Dict[str, Any] = {}
 
@@ -513,10 +472,7 @@ def build_input_form(feature_list: List[str], defaults: Dict[str, Any], form_key
                     key=f"{form_key}_{feature}",
                 )
 
-    # Fill non-shown fields with defaults for full pipeline compatibility.
-    final_inputs = defaults.copy()
-    final_inputs.update(user_values)
-    return final_inputs
+    return user_values
 
 
 def validate_inputs(inputs: Dict[str, Any], required_features: List[str]) -> Tuple[bool, List[str]]:
@@ -676,18 +632,15 @@ elif selected_page == "Diabetes Prediction":
         st.error(f"Unable to load diabetes model artifacts: {exc}")
         st.stop()
 
-    diabetes_defaults = get_defaults_for_disease("diabetes")
-    diabetes_selected_raw_features = resolve_raw_selected_features(diabetes_bundle)
     diabetes_all_features = diabetes_bundle.get("numeric_cols", []) + diabetes_bundle.get("categorical_cols", [])
 
     diabetes_inputs = build_input_form(
         feature_list=diabetes_all_features,
-        defaults=diabetes_defaults,
         form_key="diabetes",
     )
 
     if st.button("Predict Diabetes Risk", use_container_width=True):
-        valid, missing = validate_inputs(diabetes_inputs, diabetes_selected_raw_features)
+        valid, missing = validate_inputs(diabetes_inputs, diabetes_all_features)
         if not valid:
             st.error("Please fill required fields: " + ", ".join(missing))
         else:
@@ -710,18 +663,15 @@ elif selected_page == "Heart Disease Prediction":
         st.error(f"Unable to load heart model artifacts: {exc}")
         st.stop()
 
-    heart_defaults = get_defaults_for_disease("heart")
-    heart_selected_raw_features = resolve_raw_selected_features(heart_bundle)
     heart_all_features = heart_bundle.get("numeric_cols", []) + heart_bundle.get("categorical_cols", [])
 
     heart_inputs = build_input_form(
         feature_list=heart_all_features,
-        defaults=heart_defaults,
         form_key="heart",
     )
 
     if st.button("Predict Heart Disease Risk", use_container_width=True):
-        valid, missing = validate_inputs(heart_inputs, heart_selected_raw_features)
+        valid, missing = validate_inputs(heart_inputs, heart_all_features)
         if not valid:
             st.error("Please fill required fields: " + ", ".join(missing))
         else:
