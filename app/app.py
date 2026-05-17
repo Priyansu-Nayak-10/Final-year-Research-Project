@@ -4,16 +4,12 @@ import joblib
 from pathlib import Path
 from typing import Dict, List, Tuple, Any
 
-# ============================================================
 # Imports + Paths
-# ============================================================
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODEL_DIR = BASE_DIR / "models"
 
 
-# ============================================================
 # Page Configuration
-# ============================================================
 st.set_page_config(
     page_title="AI-Based Early Disease Risk Prediction System",
     page_icon="M",
@@ -22,9 +18,7 @@ st.set_page_config(
 )
 
 
-# ============================================================
 # Custom CSS Styling (White + Green Medical Theme)
-# ============================================================
 st.markdown(
     """
     <style>
@@ -94,16 +88,29 @@ st.markdown(
     }
 
     .stButton > button {
-        background: var(--primary);
-        color: #ffffff;
+        background: #16a34a !important;
+        color: #ffffff !important;
         border-radius: 10px;
-        border: none;
+        border: 1px solid #15803d !important;
         padding: 0.6rem 1rem;
         font-weight: 600;
     }
 
     .stButton > button:hover {
-        background: #168247;
+        background: #15803d !important;
+        color: #ffffff !important;
+    }
+
+    /* Number input +/- controls in green */
+    div[data-testid="stNumberInput"] button {
+        background: #16a34a !important;
+        color: #ffffff !important;
+        border: 1px solid #15803d !important;
+    }
+
+    div[data-testid="stNumberInput"] button:hover {
+        background: #15803d !important;
+        color: #ffffff !important;
     }
 
     /* Make all input labels and values clearly visible in black */
@@ -119,8 +126,32 @@ st.markdown(
         background: #ffffff !important;
     }
 
-    div[data-baseweb="select"] * {
+    /* Dropdown/select white theme */
+    div[data-baseweb="select"] > div {
+        background: #ffffff !important;
         color: #111111 !important;
+        border-color: #d1d5db !important;
+    }
+
+    div[data-baseweb="select"] span,
+    div[data-baseweb="select"] input,
+    div[data-baseweb="select"] svg {
+        color: #111111 !important;
+        fill: #111111 !important;
+    }
+
+    ul[role="listbox"] {
+        background: #ffffff !important;
+        color: #111111 !important;
+    }
+
+    ul[role="listbox"] li {
+        background: #ffffff !important;
+        color: #111111 !important;
+    }
+
+    ul[role="listbox"] li:hover {
+        background: #f3f4f6 !important;
     }
 
     /* Sidebar navigation text in white */
@@ -134,9 +165,7 @@ st.markdown(
 )
 
 
-# ============================================================
 # Constants + Metadata
-# ============================================================
 APP_TITLE = "AI-Based Early Disease Risk Prediction System Using Machine Learning"
 
 MODEL_FILES = {
@@ -183,7 +212,7 @@ HEART_DEFAULTS = {
 
 FEATURE_UI_CONFIG = {
     "age": {
-        "label": "Age (years)",
+        "label": "Age",
         "type": "number",
         "min": 1.0,
         "max": 100.0,
@@ -377,9 +406,7 @@ FEATURE_UI_CONFIG = {
     },
 }
 
-# ============================================================
 # Load Models Section
-# ============================================================
 @st.cache_resource(show_spinner=False)
 def load_model_bundle(disease_key: str) -> Dict[str, Any]:
     """Load the main model artifact and compatible optional component files."""
@@ -407,9 +434,7 @@ def load_model_bundle(disease_key: str) -> Dict[str, Any]:
     return bundle
 
 
-# ============================================================
 # Helper Functions
-# ============================================================
 def get_defaults_for_disease(disease_key: str) -> Dict[str, Any]:
     return DIABETES_DEFAULTS if disease_key == "diabetes" else HEART_DEFAULTS
 
@@ -451,9 +476,9 @@ def build_input_form(feature_list: List[str], defaults: Dict[str, Any], form_key
     """Render a dynamic input form using selected raw features only."""
     user_values: Dict[str, Any] = {}
 
-    columns = st.columns(3)
+    columns = st.columns(4)
     for idx, feature in enumerate(feature_list):
-        col = columns[idx % 3]
+        col = columns[idx % 4]
         cfg = FEATURE_UI_CONFIG.get(feature)
 
         if cfg is None:
@@ -588,9 +613,7 @@ def render_result_card(prediction: int, probability: float, disease_name: str, t
         st.write(f"- {recommendation}")
 
 
-# ============================================================
 # Sidebar Navigation
-# ============================================================
 st.sidebar.markdown("## Navigation")
 selected_page = st.sidebar.radio(
         "Go to",
@@ -605,9 +628,7 @@ st.sidebar.markdown("---")
 st.sidebar.info("This app is for academic/research support only, not a final medical diagnosis.")
 
 
-# ============================================================
 # Home Page
-# ============================================================
 if selected_page == "Home":
     st.markdown(
         f"""
@@ -645,9 +666,7 @@ if selected_page == "Home":
     st.write("- Cross-validation and threshold optimization")
 
 
-# ============================================================
 # Diabetes Prediction Page
-# ============================================================
 elif selected_page == "Diabetes Prediction":
     st.title("Diabetes Risk Prediction")
 
@@ -681,9 +700,7 @@ elif selected_page == "Diabetes Prediction":
                     st.error(f"Prediction failed. Please check inputs/artifacts. Error: {exc}")
 
 
-# ============================================================
 # Heart Disease Prediction Page
-# ============================================================
 elif selected_page == "Heart Disease Prediction":
     st.title("Heart Disease Risk Prediction")
 
@@ -717,9 +734,7 @@ elif selected_page == "Heart Disease Prediction":
                     st.error(f"Prediction failed. Please check inputs/artifacts. Error: {exc}")
 
 
-# ============================================================
 # Footer
-# ============================================================
 st.markdown("---")
 st.markdown(
     """
