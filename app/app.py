@@ -1,18 +1,150 @@
 import streamlit as st
-import joblib
 import pandas as pd
+import joblib
 from pathlib import Path
+from typing import Dict, List, Tuple, Any
 
-MODEL_DIR = Path("models")
+# ============================================================
+# Imports + Paths
+# ============================================================
+BASE_DIR = Path(__file__).resolve().parent.parent
+MODEL_DIR = BASE_DIR / "models"
 
 
-def load_artifact(name):
-    return joblib.load(MODEL_DIR / name)
+# ============================================================
+# Page Configuration
+# ============================================================
+st.set_page_config(
+    page_title="AI-Based Early Disease Risk Prediction System",
+    page_icon="M",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 
-d_artifact = load_artifact("diabetes_model.pkl")
-h_artifact = load_artifact("heart_model.pkl")
+# ============================================================
+# Custom CSS Styling (White + Green Medical Theme)
+# ============================================================
+st.markdown(
+    """
+    <style>
+    :root {
+        --primary: #1f9d55;
+        --primary-soft: #e8f8ef;
+        --accent: #f5f7f9;
+        --text-dark: #1f2937;
+        --muted: #6b7280;
+        --danger: #dc2626;
+        --warning: #d97706;
+        --success: #059669;
+    }
 
+    .stApp {
+        background: #ffffff;
+        color: var(--text-dark);
+    }
+
+    .hero-card,
+    .section-card,
+    .result-card,
+    .stat-card,
+    .footer-card {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        padding: 1rem 1.2rem;
+        box-shadow: 0 6px 24px rgba(16, 24, 40, 0.06);
+    }
+
+    .hero-card {
+        border-left: 6px solid var(--primary);
+        background: linear-gradient(120deg, #ffffff 0%, #f1fbf5 100%);
+        margin-bottom: 1rem;
+    }
+
+    .soft-title {
+        color: var(--primary);
+        font-weight: 700;
+        margin-bottom: 0.35rem;
+    }
+
+    .muted-text {
+        color: var(--muted);
+        font-size: 0.95rem;
+    }
+
+    .risk-low {
+        border-left: 6px solid var(--success);
+        background: #ecfdf5;
+    }
+
+    .risk-moderate {
+        border-left: 6px solid var(--warning);
+        background: #fffbeb;
+    }
+
+    .risk-high {
+        border-left: 6px solid var(--danger);
+        background: #fef2f2;
+    }
+
+    .small-note {
+        font-size: 0.88rem;
+        color: #4b5563;
+    }
+
+    .stButton > button {
+        background: var(--primary);
+        color: #ffffff;
+        border-radius: 10px;
+        border: none;
+        padding: 0.6rem 1rem;
+        font-weight: 600;
+    }
+
+    .stButton > button:hover {
+        background: #168247;
+    }
+
+    /* Make all input labels and values clearly visible in black */
+    label[data-testid="stWidgetLabel"] p,
+    .stMarkdown,
+    .stText,
+    .stCaption {
+        color: #111111 !important;
+    }
+
+    div[data-baseweb="input"] input {
+        color: #111111 !important;
+        background: #ffffff !important;
+    }
+
+    div[data-baseweb="select"] * {
+        color: #111111 !important;
+    }
+
+    /* Sidebar navigation text in white */
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] label[data-testid="stWidgetLabel"] p {
+        color: #ffffff !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# Constants + Metadata
+# ============================================================
+APP_TITLE = "AI-Based Early Disease Risk Prediction System Using Machine Learning"
+
+MODEL_FILES = {
+    "diabetes": "diabetes_model.pkl",
+    "heart": "heart_model.pkl",
+}
+
+# These defaults are used to auto-fill non-selected features so pipeline stays consistent.
 DIABETES_DEFAULTS = {
     "age": 53.0,
     "gender": "Female",
@@ -49,218 +181,572 @@ HEART_DEFAULTS = {
     "alcohol_units_per_week": 2.8,
 }
 
+FEATURE_UI_CONFIG = {
+    "age": {
+        "label": "Age (years)",
+        "type": "number",
+        "min": 1.0,
+        "max": 100.0,
+        "step": 1.0,
+        "placeholder": "e.g., 45",
+    },
+    "gender": {
+        "label": "Gender",
+        "type": "select",
+        "options": ["Female", "Male"],
+    },
+    "bmi": {
+        "label": "Body Mass Index (BMI)",
+        "type": "number",
+        "min": 10.0,
+        "max": 60.0,
+        "step": 0.1,
+        "placeholder": "e.g., 24.7",
+    },
+    "blood_pressure": {
+        "label": "Blood Pressure (mmHg)",
+        "type": "number",
+        "min": 60.0,
+        "max": 240.0,
+        "step": 1.0,
+        "placeholder": "e.g., 120",
+    },
+    "fasting_glucose_level": {
+        "label": "Fasting Glucose (mg/dL)",
+        "type": "number",
+        "min": 50.0,
+        "max": 350.0,
+        "step": 1.0,
+        "placeholder": "e.g., 95",
+    },
+    "insulin_level": {
+        "label": "Insulin Level",
+        "type": "number",
+        "min": 0.0,
+        "max": 400.0,
+        "step": 0.1,
+        "placeholder": "e.g., 15.5",
+    },
+    "HbA1c_level": {
+        "label": "HbA1c Level (%)",
+        "type": "number",
+        "min": 3.0,
+        "max": 20.0,
+        "step": 0.1,
+        "placeholder": "e.g., 5.6",
+    },
+    "cholesterol_level": {
+        "label": "Cholesterol Level (mg/dL)",
+        "type": "number",
+        "min": 80.0,
+        "max": 500.0,
+        "step": 1.0,
+        "placeholder": "e.g., 185",
+    },
+    "triglycerides_level": {
+        "label": "Triglycerides (mg/dL)",
+        "type": "number",
+        "min": 50.0,
+        "max": 700.0,
+        "step": 1.0,
+        "placeholder": "e.g., 150",
+    },
+    "physical_activity_level": {
+        "label": "Physical Activity Level",
+        "type": "select",
+        "options": ["Low", "Moderate", "High"],
+    },
+    "daily_calorie_intake": {
+        "label": "Daily Calorie Intake",
+        "type": "number",
+        "min": 500.0,
+        "max": 6000.0,
+        "step": 10.0,
+        "placeholder": "e.g., 2200",
+    },
+    "sugar_intake_grams_per_day": {
+        "label": "Sugar Intake (grams/day)",
+        "type": "number",
+        "min": 0.0,
+        "max": 500.0,
+        "step": 0.5,
+        "placeholder": "e.g., 45",
+    },
+    "sleep_hours": {
+        "label": "Sleep Hours (per day)",
+        "type": "number",
+        "min": 0.0,
+        "max": 14.0,
+        "step": 0.1,
+        "placeholder": "e.g., 7.0",
+    },
+    "stress_level": {
+        "label": "Stress Level (0-10)",
+        "type": "number",
+        "min": 0.0,
+        "max": 10.0,
+        "step": 0.1,
+        "placeholder": "e.g., 5",
+    },
+    "family_history_diabetes": {
+        "label": "Family History of Diabetes",
+        "type": "select",
+        "options": ["No", "Yes"],
+    },
+    "waist_circumference_cm": {
+        "label": "Waist Circumference (cm)",
+        "type": "number",
+        "min": 40.0,
+        "max": 200.0,
+        "step": 0.1,
+        "placeholder": "e.g., 92",
+    },
+    "systolic_bp": {
+        "label": "Systolic BP (mmHg)",
+        "type": "number",
+        "min": 70.0,
+        "max": 260.0,
+        "step": 1.0,
+        "placeholder": "e.g., 120",
+    },
+    "diastolic_bp": {
+        "label": "Diastolic BP (mmHg)",
+        "type": "number",
+        "min": 40.0,
+        "max": 160.0,
+        "step": 1.0,
+        "placeholder": "e.g., 80",
+    },
+    "cholesterol_mg_dl": {
+        "label": "Cholesterol (mg/dL)",
+        "type": "number",
+        "min": 80.0,
+        "max": 500.0,
+        "step": 1.0,
+        "placeholder": "e.g., 190",
+    },
+    "resting_heart_rate": {
+        "label": "Resting Heart Rate (bpm)",
+        "type": "number",
+        "min": 35.0,
+        "max": 220.0,
+        "step": 1.0,
+        "placeholder": "e.g., 72",
+    },
+    "smoking_status": {
+        "label": "Smoking Status",
+        "type": "select",
+        "options": ["Never", "Former", "Current"],
+    },
+    "daily_steps": {
+        "label": "Daily Steps",
+        "type": "number",
+        "min": 0.0,
+        "max": 60000.0,
+        "step": 100.0,
+        "placeholder": "e.g., 7000",
+    },
+    "physical_activity_hours_per_week": {
+        "label": "Physical Activity (hours/week)",
+        "type": "number",
+        "min": 0.0,
+        "max": 60.0,
+        "step": 0.1,
+        "placeholder": "e.g., 3.5",
+    },
+    "family_history_heart_disease": {
+        "label": "Family History of Heart Disease",
+        "type": "select",
+        "options": ["No", "Yes"],
+    },
+    "diet_quality_score": {
+        "label": "Diet Quality Score (0-10)",
+        "type": "number",
+        "min": 0.0,
+        "max": 10.0,
+        "step": 0.1,
+        "placeholder": "e.g., 6.5",
+    },
+    "alcohol_units_per_week": {
+        "label": "Alcohol Units / Week",
+        "type": "number",
+        "min": 0.0,
+        "max": 80.0,
+        "step": 0.5,
+        "placeholder": "e.g., 2",
+    },
+}
 
-# ---------------- CORE ----------------
-def is_missing(value):
+# ============================================================
+# Load Models Section
+# ============================================================
+@st.cache_resource(show_spinner=False)
+def load_model_bundle(disease_key: str) -> Dict[str, Any]:
+    """Load the main model artifact and compatible optional component files."""
+    model_path = MODEL_DIR / MODEL_FILES[disease_key]
+    artifact = joblib.load(model_path)
+
+    bundle = {
+        "model": artifact.get("model"),
+        "preprocessor": artifact.get("preprocessor"),
+        "selector": artifact.get("selector"),
+        "selected_features": artifact.get("selected_features", []),
+        "numeric_cols": artifact.get("numeric_cols", []),
+        "categorical_cols": artifact.get("categorical_cols", []),
+        "threshold": artifact.get("threshold", 0.5),
+        "model_name": artifact.get("model_name", "Trained Model"),
+    }
+
+    # Optional standalone files (if present in future versions of the project)
+    for key in ["scaler", "encoders", "selector", "selected_features"]:
+        component_path = MODEL_DIR / f"{disease_key}_{key}.pkl"
+        if component_path.exists():
+            bundle[key] = joblib.load(component_path)
+
+    # If no standalone scaler/encoders are present, use preprocessor as unified pipeline.
+    if "scaler" not in bundle:
+        bundle["scaler"] = bundle["preprocessor"]
+    if "encoders" not in bundle:
+        bundle["encoders"] = bundle["preprocessor"]
+
+    return bundle
+
+
+# ============================================================
+# Helper Functions
+# ============================================================
+def get_defaults_for_disease(disease_key: str) -> Dict[str, Any]:
+    return DIABETES_DEFAULTS if disease_key == "diabetes" else HEART_DEFAULTS
+
+
+def is_missing(value: Any) -> bool:
     return value is None or value == "Select"
 
 
-def prepare_inputs(raw_inputs, required_fields, defaults):
-    missing = [label for feature, label in required_fields if is_missing(raw_inputs.get(feature))]
-    if missing:
-        st.error("Required fields missing: " + ", ".join(missing))
-        st.stop()
+def resolve_raw_selected_features(bundle: Dict[str, Any]) -> List[str]:
+    """
+    Convert selected features after SelectKBest back to raw input fields for UI.
+    Numeric features appear directly; categorical features can appear as one-hot names.
+    """
+    selected = bundle.get("selected_features", [])
+    numeric_cols = bundle.get("numeric_cols", [])
+    categorical_cols = bundle.get("categorical_cols", [])
 
-    filled_inputs = {}
-    autofilled = []
-    for feature, default_value in defaults.items():
-        val = raw_inputs.get(feature)
-        if is_missing(val):
-            filled_inputs[feature] = default_value
-            autofilled.append(feature)
-        else:
-            filled_inputs[feature] = val
+    raw_selected: List[str] = []
 
-    return pd.DataFrame([filled_inputs]), autofilled
+    # Keep numeric columns that were selected by SelectKBest.
+    for col in numeric_cols:
+        if col in selected:
+            raw_selected.append(col)
 
+    # Keep categorical column if any one-hot version was selected.
+    for cat_col in categorical_cols:
+        one_hot_prefix = f"{cat_col}_"
+        if any(str(feature).startswith(one_hot_prefix) for feature in selected):
+            raw_selected.append(cat_col)
 
-def run_prediction(data, artifact):
-    model = artifact["model"]
-    preprocessor = artifact["preprocessor"]
-    selector = artifact["selector"]
-    input_cols = artifact["numeric_cols"] + artifact["categorical_cols"]
+    # Safety fallback: if mapping is empty, use all expected raw columns.
+    if not raw_selected:
+        raw_selected = numeric_cols + categorical_cols
 
-    try:
-        transformed = preprocessor.transform(data[input_cols])
-        selected = selector.transform(transformed)
-        pred = model.predict(selected)[0]
-        prob = model.predict_proba(selected)[0][1]
-        return pred, prob
-    except Exception as e:
-        st.error(f"Prediction error: {e}")
-        st.stop()
+    return raw_selected
 
 
-# ---------------- RESULT ----------------
-def show_result(pred, prob):
-    color = "red" if pred else "green"
+def build_input_form(feature_list: List[str], defaults: Dict[str, Any], form_key: str) -> Dict[str, Any]:
+    """Render a dynamic input form using selected raw features only."""
+    user_values: Dict[str, Any] = {}
+
+    columns = st.columns(3)
+    for idx, feature in enumerate(feature_list):
+        col = columns[idx % 3]
+        cfg = FEATURE_UI_CONFIG.get(feature)
+
+        if cfg is None:
+            # Generic fallback for unknown numeric-like feature.
+            with col:
+                user_values[feature] = st.number_input(
+                    f"{feature}",
+                    value=None,
+                    placeholder="Enter value",
+                    key=f"{form_key}_{feature}",
+                )
+            continue
+
+        with col:
+            if cfg["type"] == "number":
+                label_with_range = f"{cfg['label']} [{cfg['min']} - {cfg['max']}]"
+                user_values[feature] = st.number_input(
+                    label_with_range,
+                    min_value=float(cfg["min"]),
+                    max_value=float(cfg["max"]),
+                    step=float(cfg["step"]),
+                    value=None,
+                    placeholder=cfg["placeholder"],
+                    key=f"{form_key}_{feature}",
+                )
+            else:
+                options = ["Select"] + cfg["options"]
+                user_values[feature] = st.selectbox(
+                    cfg["label"],
+                    options=options,
+                    index=0,
+                    key=f"{form_key}_{feature}",
+                )
+
+    # Fill non-shown fields with defaults for full pipeline compatibility.
+    final_inputs = defaults.copy()
+    final_inputs.update(user_values)
+    return final_inputs
+
+
+def validate_inputs(inputs: Dict[str, Any], required_features: List[str]) -> Tuple[bool, List[str]]:
+    """Simple validation for required selected fields."""
+    missing_labels = []
+    for feature in required_features:
+        value = inputs.get(feature)
+        if is_missing(value):
+            label = FEATURE_UI_CONFIG.get(feature, {}).get("label", feature)
+            missing_labels.append(label)
+    return len(missing_labels) == 0, missing_labels
+
+
+def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> Tuple[int, float, float]:
+    """
+    Keep prediction flow aligned with training pipeline:
+    1) Encoding + scaling by preprocessor
+    2) Feature selection by SelectKBest
+    3) Prediction + probability
+    """
+    model = bundle["model"]
+    preprocessor = bundle["preprocessor"]
+    selector = bundle["selector"]
+    threshold = float(bundle.get("threshold", 0.5))
+
+    input_cols = bundle.get("numeric_cols", []) + bundle.get("categorical_cols", [])
+    input_df = pd.DataFrame([inputs])
+
+    # Step 1: Encode categorical + scale numerical features.
+    processed = preprocessor.transform(input_df[input_cols])
+
+    # Step 2: Keep top-k selected features (same as training).
+    selected_data = selector.transform(processed)
+
+    # Step 3: Predict class and disease probability.
+    probability = float(model.predict_proba(selected_data)[0][1])
+    prediction = 1 if probability >= threshold else 0
+
+    return prediction, probability, threshold
+
+
+def risk_level_from_probability(probability: float) -> str:
+    if probability < 0.35:
+        return "Low Risk"
+    if probability < 0.65:
+        return "Moderate Risk"
+    return "High Risk"
+
+
+def risk_class_for_css(risk_level: str) -> str:
+    if risk_level == "Low Risk":
+        return "risk-low"
+    if risk_level == "Moderate Risk":
+        return "risk-moderate"
+    return "risk-high"
+
+
+def get_health_recommendations(risk_level: str, disease_name: str) -> List[str]:
+    if risk_level == "High Risk":
+        return [
+            f"Consult a physician soon for detailed {disease_name.lower()} screening.",
+            "Follow a low-sugar, low-saturated-fat diet plan.",
+            "Start regular exercise (at least 30 minutes/day, 5 days/week).",
+            "Track blood markers regularly and reduce lifestyle stress.",
+        ]
+
+    if risk_level == "Moderate Risk":
+        return [
+            "Improve meal quality with more fiber and vegetables.",
+            "Increase physical activity and reduce sedentary hours.",
+            "Maintain healthy sleep (7-8 hours) and hydration.",
+            "Schedule periodic health checkups every few months.",
+        ]
+
+    return [
+        "Continue a balanced diet and active routine.",
+        "Maintain healthy body weight and stress management.",
+        "Do preventive health checkups at regular intervals.",
+        "Avoid smoking and limit processed sugar intake.",
+    ]
+
+
+def render_result_card(prediction: int, probability: float, disease_name: str, threshold: float) -> None:
+    risk_level = risk_level_from_probability(probability)
+    css_class = risk_class_for_css(risk_level)
+
+    interpretation_map = {
+        "Low Risk": f"Current model indicates relatively low {disease_name.lower()} risk.",
+        "Moderate Risk": f"Current model indicates moderate {disease_name.lower()} risk. Lifestyle correction is advised.",
+        "High Risk": f"Current model indicates high {disease_name.lower()} risk. Clinical consultation is strongly recommended.",
+    }
+
     st.markdown(
         f"""
-    <div style="padding:18px;border-radius:10px;background:#111;">
-        <h3 style="color:{color};">Risk: {"High" if pred else "Low"}</h3>
-        <p style="color:#fff;">Probability: {prob:.2f}</p>
-    </div>
-    """,
+        <div class="result-card {css_class}">
+            <h4 style="margin-bottom:0.25rem;">Prediction Result: {risk_level}</h4>
+            <p style="margin:0.15rem 0;">Risk Probability: <b>{probability * 100:.2f}%</b></p>
+            <p style="margin:0.15rem 0;">Prediction Confidence: <b>{max(probability, 1-probability) * 100:.2f}%</b></p>
+            <p style="margin:0.15rem 0;">Decision Threshold Used: <b>{threshold:.2f}</b></p>
+            <p class="small-note" style="margin-top:0.45rem;">{interpretation_map[risk_level]}</p>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-
-def interpret(prob):
-    if prob > 0.8:
-        st.warning("Very high risk")
-    elif prob > 0.5:
-        st.info("Moderate risk")
-    else:
-        st.success("Low risk")
+    st.markdown("#### AI-Based Health Recommendations")
+    for recommendation in get_health_recommendations(risk_level, disease_name):
+        st.write(f"- {recommendation}")
 
 
-# ---------------- UI ----------------
-st.set_page_config(page_title="AI Health Predictor", layout="wide")
+# ============================================================
+# Sidebar Navigation
+# ============================================================
+st.sidebar.markdown("## Navigation")
+selected_page = st.sidebar.radio(
+        "Go to",
+        [
+        "Home",
+        "Diabetes Prediction",
+        "Heart Disease Prediction",
+        ],
+)
 
-# REMOVE +/- BUTTONS (clean fix)
+st.sidebar.markdown("---")
+st.sidebar.info("This app is for academic/research support only, not a final medical diagnosis.")
+
+
+# ============================================================
+# Home Page
+# ============================================================
+if selected_page == "Home":
+    st.markdown(
+        f"""
+        <div class="hero-card">
+            <h2 class="soft-title">{APP_TITLE}</h2>
+            <p class="muted-text">
+                A research-oriented AI healthcare dashboard for early <b>Diabetes</b> and <b>Heart Disease</b> risk prediction.
+                The system demonstrates ML-based preventive screening support with interpretable probability outputs.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.markdown("<div class='stat-card'><h4>2</h4><p class='small-note'>Risk Prediction Modules</p></div>", unsafe_allow_html=True)
+    with c2:
+        st.markdown("<div class='stat-card'><h4>5+</h4><p class='small-note'>Algorithms Evaluated</p></div>", unsafe_allow_html=True)
+    with c3:
+        st.markdown("<div class='stat-card'><h4>SelectKBest</h4><p class='small-note'>Feature Selection</p></div>", unsafe_allow_html=True)
+    with c4:
+        st.markdown("<div class='stat-card'><h4>Threshold Tuning</h4><p class='small-note'>Optimized Decisions</p></div>", unsafe_allow_html=True)
+
+    st.markdown("### Why Early Disease Prediction Matters")
+    st.write(
+        "Early detection helps reduce complications, supports timely interventions, and enables personalized preventive care."
+    )
+
+    st.markdown("### ML Technologies Used")
+    st.write("- Logistic Regression, Random Forest, Decision Tree, SVM, XGBoost")
+    st.write("- Data preprocessing with encoding and scaling")
+    st.write("- SMOTE for class balancing")
+    st.write("- SelectKBest for feature selection")
+    st.write("- Cross-validation and threshold optimization")
+
+
+# ============================================================
+# Diabetes Prediction Page
+# ============================================================
+elif selected_page == "Diabetes Prediction":
+    st.title("Diabetes Risk Prediction")
+
+    try:
+        diabetes_bundle = load_model_bundle("diabetes")
+    except Exception as exc:
+        st.error(f"Unable to load diabetes model artifacts: {exc}")
+        st.stop()
+
+    diabetes_defaults = get_defaults_for_disease("diabetes")
+    diabetes_selected_raw_features = resolve_raw_selected_features(diabetes_bundle)
+
+    diabetes_inputs = build_input_form(
+        feature_list=diabetes_selected_raw_features,
+        defaults=diabetes_defaults,
+        form_key="diabetes",
+    )
+
+    if st.button("Predict Diabetes Risk", use_container_width=True):
+        valid, missing = validate_inputs(diabetes_inputs, diabetes_selected_raw_features)
+        if not valid:
+            st.error("Please fill required fields: " + ", ".join(missing))
+        else:
+            with st.spinner("Running diabetes risk prediction..."):
+                try:
+                    pred, prob, threshold = run_prediction_pipeline(diabetes_inputs, diabetes_bundle)
+                    st.success("Prediction completed successfully.")
+                    render_result_card(pred, prob, "Diabetes", threshold)
+                except Exception as exc:
+                    st.error(f"Prediction failed. Please check inputs/artifacts. Error: {exc}")
+
+
+# ============================================================
+# Heart Disease Prediction Page
+# ============================================================
+elif selected_page == "Heart Disease Prediction":
+    st.title("Heart Disease Risk Prediction")
+
+    try:
+        heart_bundle = load_model_bundle("heart")
+    except Exception as exc:
+        st.error(f"Unable to load heart model artifacts: {exc}")
+        st.stop()
+
+    heart_defaults = get_defaults_for_disease("heart")
+    heart_selected_raw_features = resolve_raw_selected_features(heart_bundle)
+
+    heart_inputs = build_input_form(
+        feature_list=heart_selected_raw_features,
+        defaults=heart_defaults,
+        form_key="heart",
+    )
+
+    if st.button("Predict Heart Disease Risk", use_container_width=True):
+        valid, missing = validate_inputs(heart_inputs, heart_selected_raw_features)
+        if not valid:
+            st.error("Please fill required fields: " + ", ".join(missing))
+        else:
+            with st.spinner("Running heart disease risk prediction..."):
+                try:
+                    pred, prob, threshold = run_prediction_pipeline(heart_inputs, heart_bundle)
+                    st.success("Prediction completed successfully.")
+                    render_result_card(pred, prob, "Heart Disease", threshold)
+                except Exception as exc:
+                    st.error(f"Prediction failed. Please check inputs/artifacts. Error: {exc}")
+
+
+# ============================================================
+# Footer
+# ============================================================
+st.markdown("---")
 st.markdown(
     """
-<style>
-div[data-testid="stNumberInput"] button {display:none;}
-</style>
-""",
+    <div class="footer-card">
+        <p style="margin:0; text-align:center; color:#4b5563;">
+            Final Year Research Project • AI-Based Early Disease Risk Prediction System • Streamlit + Machine Learning
+        </p>
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
-st.title("TrustMed - AI Disease Predictor")
 
-option = st.sidebar.selectbox("Select", ["Diabetes", "Heart Disease"])
-
-# ================= DIABETES =================
-if option == "Diabetes":
-    st.subheader("Diabetes Prediction")
-    st.caption(
-        "Only key fields are required. Skipped optional fields are auto-filled from training medians/modes."
-    )
-
-    c1, c2, c3 = st.columns(3)
-
-    with c1:
-        age = st.number_input("Age", 1, 100, value=None, placeholder="Enter age")
-        gender = st.selectbox("Gender (Optional)", ["Select", "Female", "Male"])
-        bmi = st.number_input("BMI", 10.0, 60.0, value=None, placeholder="e.g. 22.5")
-        bp = st.number_input("Blood Pressure", 60.0, 240.0, value=None, placeholder="e.g. 120")
-        glucose = st.number_input("Fasting Glucose", 50.0, 350.0, value=None, placeholder="e.g. 100")
-
-    with c2:
-        insulin = st.number_input("Insulin (Optional)", 0.0, 400.0, value=None, placeholder="e.g. 80")
-        hba1c = st.number_input("HbA1c", 3.0, 20.0, value=None, placeholder="e.g. 5.5")
-        chol = st.number_input("Cholesterol (Optional)", 80.0, 500.0, value=None, placeholder="e.g. 180")
-        trig = st.number_input("Triglycerides (Optional)", 50.0, 700.0, value=None, placeholder="e.g. 150")
-        activity = st.selectbox("Activity (Optional)", ["Select", "Low", "Moderate", "High"])
-
-    with c3:
-        calories = st.number_input("Calories (Optional)", 500.0, 6000.0, value=None, placeholder="e.g. 2000")
-        sugar = st.number_input("Sugar (Optional)", 0.0, 500.0, value=None, placeholder="e.g. 60")
-        sleep = st.number_input("Sleep (Optional)", 0.0, 14.0, value=None, placeholder="6-8")
-        stress = st.number_input("Stress (Optional)", 0.0, 10.0, value=None, placeholder="e.g. 5")
-        family = st.selectbox("Family History (Optional)", ["Select", "No", "Yes"])
-        waist = st.number_input(
-            "Waist Circumference (Optional, cm)", 40.0, 200.0, value=None, placeholder="e.g. 90"
-        )
-
-    if st.button("Predict Diabetes", use_container_width=True):
-        raw_data = {
-            "age": age,
-            "gender": gender,
-            "bmi": bmi,
-            "blood_pressure": bp,
-            "fasting_glucose_level": glucose,
-            "insulin_level": insulin,
-            "HbA1c_level": hba1c,
-            "cholesterol_level": chol,
-            "triglycerides_level": trig,
-            "physical_activity_level": activity,
-            "daily_calorie_intake": calories,
-            "sugar_intake_grams_per_day": sugar,
-            "sleep_hours": sleep,
-            "stress_level": stress,
-            "family_history_diabetes": family,
-            "waist_circumference_cm": waist,
-        }
-
-        required_fields = [
-            ("age", "Age"),
-            ("bmi", "BMI"),
-            ("blood_pressure", "Blood Pressure"),
-            ("fasting_glucose_level", "Fasting Glucose"),
-            ("HbA1c_level", "HbA1c"),
-        ]
-
-        data, autofilled = prepare_inputs(raw_data, required_fields, DIABETES_DEFAULTS)
-        if autofilled:
-            st.info("Optional auto-filled fields: " + ", ".join(autofilled))
-
-        pred, prob = run_prediction(data, d_artifact)
-        show_result(pred, prob)
-        interpret(prob)
-
-# ================= HEART =================
-else:
-    st.subheader("Heart Disease Prediction")
-    st.caption(
-        "Only key fields are required. Skipped optional fields are auto-filled from training medians/modes."
-    )
-
-    c1, c2, c3 = st.columns(3)
-
-    with c1:
-        age = st.number_input("Age", 1, 100, value=None, placeholder="Enter age")
-        bmi = st.number_input("BMI", 10.0, 60.0, value=None, placeholder="e.g. 24")
-        sys = st.number_input("Systolic BP", 70.0, 260.0, value=None, placeholder="e.g. 120")
-        dia = st.number_input("Diastolic BP", 40.0, 160.0, value=None, placeholder="e.g. 80")
-        chol = st.number_input("Cholesterol", 80.0, 500.0, value=None, placeholder="e.g. 190")
-
-    with c2:
-        hr = st.number_input("Heart Rate", 35.0, 220.0, value=None, placeholder="e.g. 72")
-        smoking = st.selectbox("Smoking (Optional)", ["Select", "Never", "Former", "Current"])
-        steps = st.number_input("Steps (Optional)", 0, 60000, value=None, placeholder="e.g. 7000")
-        stress = st.number_input("Stress (Optional)", 0.0, 10.0, value=None, placeholder="e.g. 5")
-        activity = st.number_input("Activity hrs (Optional)", 0.0, 60.0, value=None, placeholder="e.g. 3")
-
-    with c3:
-        sleep = st.number_input("Sleep (Optional)", 0.0, 14.0, value=None, placeholder="6-8")
-        family = st.selectbox("Family History (Optional)", ["Select", "No", "Yes"])
-        diet = st.number_input("Diet Score (Optional)", 0.0, 10.0, value=None, placeholder="e.g. 6")
-        alcohol = st.number_input("Alcohol (Optional)", 0.0, 80.0, value=None, placeholder="e.g. 2")
-        dummy = st.empty()  # keeps grid balanced
-
-    if st.button("Predict Heart Risk", use_container_width=True):
-        raw_data = {
-            "age": age,
-            "bmi": bmi,
-            "systolic_bp": sys,
-            "diastolic_bp": dia,
-            "cholesterol_mg_dl": chol,
-            "resting_heart_rate": hr,
-            "smoking_status": smoking,
-            "daily_steps": steps,
-            "stress_level": stress,
-            "physical_activity_hours_per_week": activity,
-            "sleep_hours": sleep,
-            "family_history_heart_disease": family,
-            "diet_quality_score": diet,
-            "alcohol_units_per_week": alcohol,
-        }
-
-        required_fields = [
-            ("age", "Age"),
-            ("bmi", "BMI"),
-            ("systolic_bp", "Systolic BP"),
-            ("diastolic_bp", "Diastolic BP"),
-            ("cholesterol_mg_dl", "Cholesterol"),
-            ("resting_heart_rate", "Heart Rate"),
-        ]
-
-        data, autofilled = prepare_inputs(raw_data, required_fields, HEART_DEFAULTS)
-        if autofilled:
-            st.info("Optional auto-filled fields: " + ", ".join(autofilled))
-
-        pred, prob = run_prediction(data, h_artifact)
-        show_result(pred, prob)
-        interpret(prob)
