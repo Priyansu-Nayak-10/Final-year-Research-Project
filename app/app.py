@@ -390,6 +390,7 @@ def load_model_bundle(disease_key: str) -> Dict[str, Any]:
         "model": artifact.get("model"),
         "preprocessor": artifact.get("preprocessor"),
         "selector": artifact.get("selector"),
+        "features": artifact.get("features", []),
         "selected_features": artifact.get("selected_features", []),
         "numeric_cols": artifact.get("numeric_cols", []),
         "categorical_cols": artifact.get("categorical_cols", []),
@@ -398,7 +399,7 @@ def load_model_bundle(disease_key: str) -> Dict[str, Any]:
     }
 
     # Optional standalone files (if present in future versions of the project)
-    for key in ["scaler", "encoders", "selector", "selected_features"]:
+    for key in ["features", "selector", "selected_features"]:
         component_path = MODEL_DIR / f"{disease_key}_{key}.pkl"
         if component_path.exists():
             bundle[key] = joblib.load(component_path)
@@ -532,7 +533,7 @@ def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> T
     return prediction, probability, threshold
 
 
-def risk_level_from_probability(prediction: int) -> str:
+def risk_level_from_prediction(prediction: int) -> str:
     """Convert binary model prediction to risk level label."""
     return "High Risk" if prediction == 1 else "Low Risk"
 
@@ -561,7 +562,7 @@ def get_health_recommendations(risk_level: str, disease_name: str) -> List[str]:
 
 
 def render_result_card(prediction: int, probability: float, disease_name: str, threshold: float) -> None:
-    risk_level = risk_level_from_probability(prediction)
+    risk_level = risk_level_from_prediction(prediction)
     css_class = risk_class_for_css(risk_level)
 
     interpretation_map = {
@@ -658,9 +659,10 @@ elif selected_page == "Diabetes Prediction":
 
     diabetes_defaults = get_defaults_for_disease("diabetes")
     diabetes_selected_raw_features = resolve_raw_selected_features(diabetes_bundle)
+    diabetes_all_features = diabetes_bundle.get("numeric_cols", []) + diabetes_bundle.get("categorical_cols", [])
 
     diabetes_inputs = build_input_form(
-        feature_list=diabetes_selected_raw_features,
+        feature_list=diabetes_all_features,
         defaults=diabetes_defaults,
         form_key="diabetes",
     )
@@ -693,9 +695,10 @@ elif selected_page == "Heart Disease Prediction":
 
     heart_defaults = get_defaults_for_disease("heart")
     heart_selected_raw_features = resolve_raw_selected_features(heart_bundle)
+    heart_all_features = heart_bundle.get("numeric_cols", []) + heart_bundle.get("categorical_cols", [])
 
     heart_inputs = build_input_form(
-        feature_list=heart_selected_raw_features,
+        feature_list=heart_all_features,
         defaults=heart_defaults,
         form_key="heart",
     )
