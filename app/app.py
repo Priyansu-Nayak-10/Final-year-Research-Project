@@ -5,14 +5,42 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Any
 
 # Imports + Paths
-BASE_DIR = Path(__file__).resolve().parent.parent
+def resolve_project_root() -> Path:
+    """
+    Resolve project root safely across local/dev/deployment environments.
+    We walk upward from this file and choose the best-matching candidate.
+    `models/` is treated as required and other known directories increase confidence.
+    """
+    current_file = Path(__file__).resolve()
+    known_dirs = ("models", "data", "Files", "app")
+    best_candidate = None
+    best_score = -1
+
+    for candidate in [current_file.parent, *current_file.parents]:
+        if not (candidate / "models").exists():
+            continue
+        score = sum(1 for directory in known_dirs if (candidate / directory).exists())
+        if score > best_score:
+            best_candidate = candidate
+            best_score = score
+
+    if best_candidate is not None:
+        return best_candidate
+
+    # Final safe fallback for unusual packaging layouts.
+    return current_file.parent
+
+
+BASE_DIR = resolve_project_root()
 MODEL_DIR = BASE_DIR / "models"
+DATA_DIR = BASE_DIR / "data"
+ASSETS_DIR = BASE_DIR / "Files"
 
 
 # Page Configuration
 st.set_page_config(
     page_title="AI-Based Early Disease Risk Prediction System",
-    page_icon="M",
+    page_icon="🩺",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -29,7 +57,6 @@ st.markdown(
         --text-dark: #1f2937;
         --muted: #6b7280;
         --danger: #dc2626;
-        --warning: #d97706;
         --success: #059669;
     }
 
@@ -70,11 +97,6 @@ st.markdown(
     .risk-low {
         border-left: 6px solid var(--success);
         background: #ecfdf5;
-    }
-
-    .risk-moderate {
-        border-left: 6px solid var(--warning);
-        background: #fffbeb;
     }
 
     .risk-high {
@@ -171,6 +193,16 @@ APP_TITLE = "AI-Based Early Disease Risk Prediction System Using Machine Learnin
 MODEL_FILES = {
     "diabetes": "diabetes_model.pkl",
     "heart": "heart_model.pkl",
+}
+
+DATASET_FILES = {
+    "diabetes": "diabetes.csv",
+    "heart": "cardiovascular.csv",
+}
+
+ASSET_FILES = {
+    "model_architecture": "model architecture.png",
+    "model_methodology": "Model Methodology.png",
 }
 
 FEATURE_UI_CONFIG = {
@@ -370,10 +402,17 @@ FEATURE_UI_CONFIG = {
 }
 
 # Load Models Section
+def _resolve_existing_path(directory: Path, filename: str, label: str) -> Path:
+    path = (directory / filename).resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"{label} not found at: {path}")
+    return path
+
+
 @st.cache_resource(show_spinner=False)
 def load_model_bundle(disease_key: str) -> Dict[str, Any]:
     """Load the main model artifact and compatible optional component files."""
-    model_path = MODEL_DIR / MODEL_FILES[disease_key]
+    model_path = _resolve_existing_path(MODEL_DIR, MODEL_FILES[disease_key], "Model artifact")
     artifact = joblib.load(model_path)
 
     bundle = {
@@ -394,41 +433,25 @@ def load_model_bundle(disease_key: str) -> Dict[str, Any]:
         if component_path.exists():
             bundle[key] = joblib.load(component_path)
 
+    if bundle["model"] is None or bundle["preprocessor"] is None:
+        raise ValueError(f"Incomplete model bundle for '{disease_key}': missing model or preprocessor.")
+
     return bundle
 
 
 # Helper Functions
+@st.cache_data(show_spinner=False)
+def load_dataset(disease_key: str) -> pd.DataFrame:
+    dataset_path = _resolve_existing_path(DATA_DIR, DATASET_FILES[disease_key], "Dataset")
+    return pd.read_csv(dataset_path)
+
+
+def get_asset_path(asset_key: str) -> Path:
+    return _resolve_existing_path(ASSETS_DIR, ASSET_FILES[asset_key], "Asset")
+
+
 def is_missing(value: Any) -> bool:
     return value is None or value == "Select"
-
-
-def resolve_raw_selected_features(bundle: Dict[str, Any]) -> List[str]:
-    """
-    Convert selected features after SelectKBest back to raw input fields for UI.
-    Numeric features appear directly; categorical features can appear as one-hot names.
-    """
-    selected = bundle.get("selected_features", [])
-    numeric_cols = bundle.get("numeric_cols", [])
-    categorical_cols = bundle.get("categorical_cols", [])
-
-    raw_selected: List[str] = []
-
-    # Keep numeric columns that were selected by SelectKBest.
-    for col in numeric_cols:
-        if col in selected:
-            raw_selected.append(col)
-
-    # Keep categorical column if any one-hot version was selected.
-    for cat_col in categorical_cols:
-        one_hot_prefix = f"{cat_col}_"
-        if any(str(feature).startswith(one_hot_prefix) for feature in selected):
-            raw_selected.append(cat_col)
-
-    # Safety fallback: if mapping is empty, use all expected raw columns.
-    if not raw_selected:
-        raw_selected = numeric_cols + categorical_cols
-
-    return raw_selected
 
 
 def build_input_form(feature_list: List[str], form_key: str) -> Dict[str, Any]:
@@ -496,6 +519,7 @@ def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> T
     model = bundle["model"]
     preprocessor = bundle["preprocessor"]
     selector = bundle["selector"]
+    selected_features = bundle.get("selected_features", [])
     threshold = float(bundle.get("threshold", 0.5))
 
     input_cols = bundle.get("features", bundle.get("numeric_cols", []) + bundle.get("categorical_cols", []))
@@ -505,7 +529,18 @@ def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> T
     processed = preprocessor.transform(input_df[input_cols])
 
     # Step 2: Keep top-k selected features (same as training).
-    selected_data = selector.transform(processed)
+    if selector is not None:
+        selected_data = selector.transform(processed)
+    elif selected_features:
+        # Fallback path for future artifacts missing explicit selector object.
+        try:
+            processed_cols = list(preprocessor.get_feature_names_out(input_cols))
+            processed_df = pd.DataFrame(processed, columns=processed_cols)
+            selected_data = processed_df[selected_features].to_numpy()
+        except Exception:
+            selected_data = processed
+    else:
+        selected_data = processed
 
     # Step 3: Predict class and disease probability.
     probability = float(model.predict_proba(selected_data)[0][1])
@@ -632,7 +667,10 @@ elif selected_page == "Diabetes Prediction":
         st.error(f"Unable to load diabetes model artifacts: {exc}")
         st.stop()
 
-    diabetes_all_features = diabetes_bundle.get("numeric_cols", []) + diabetes_bundle.get("categorical_cols", [])
+    diabetes_all_features = diabetes_bundle.get(
+        "features",
+        diabetes_bundle.get("numeric_cols", []) + diabetes_bundle.get("categorical_cols", []),
+    )
 
     diabetes_inputs = build_input_form(
         feature_list=diabetes_all_features,
@@ -663,7 +701,10 @@ elif selected_page == "Heart Disease Prediction":
         st.error(f"Unable to load heart model artifacts: {exc}")
         st.stop()
 
-    heart_all_features = heart_bundle.get("numeric_cols", []) + heart_bundle.get("categorical_cols", [])
+    heart_all_features = heart_bundle.get(
+        "features",
+        heart_bundle.get("numeric_cols", []) + heart_bundle.get("categorical_cols", []),
+    )
 
     heart_inputs = build_input_form(
         feature_list=heart_all_features,
