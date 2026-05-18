@@ -191,13 +191,13 @@ st.markdown(
 APP_TITLE = "AI-Based Early Disease Risk Prediction System Using Machine Learning"
 
 MODEL_FILES = {
-    "diabetes": "diabetes_model.pkl",
-    "heart": "heart_model.pkl",
+    "diabetes": ["diabetes_model.pkl"],
+    "cardiovascular": ["cardiovascular_model.pkl"],
 }
 
 DATASET_FILES = {
     "diabetes": "diabetes.csv",
-    "heart": "cardiovascular.csv",
+    "cardiovascular": "cardiovascular.csv",
 }
 
 ASSET_FILES = {
@@ -379,7 +379,7 @@ FEATURE_UI_CONFIG = {
         "placeholder": "e.g., 3.5",
     },
     "family_history_heart_disease": {
-        "label": "Family History of Heart Disease",
+        "label": "Family History of Cardiovascular Disease",
         "type": "select",
         "options": ["No", "Yes"],
     },
@@ -409,10 +409,18 @@ def _resolve_existing_path(directory: Path, filename: str, label: str) -> Path:
     return path
 
 
+def _resolve_existing_path_candidates(directory: Path, filenames: List[str], label: str) -> Path:
+    for filename in filenames:
+        candidate = (directory / filename).resolve()
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(f"{label} not found. Checked: {', '.join(str((directory / name).resolve()) for name in filenames)}")
+
+
 @st.cache_resource(show_spinner=False)
 def load_model_bundle(disease_key: str) -> Dict[str, Any]:
     """Load the main model artifact and compatible optional component files."""
-    model_path = _resolve_existing_path(MODEL_DIR, MODEL_FILES[disease_key], "Model artifact")
+    model_path = _resolve_existing_path_candidates(MODEL_DIR, MODEL_FILES[disease_key], "Model artifact")
     artifact = joblib.load(model_path)
 
     bundle = {
@@ -448,6 +456,38 @@ def load_dataset(disease_key: str) -> pd.DataFrame:
 
 def get_asset_path(asset_key: str) -> Path:
     return _resolve_existing_path(ASSETS_DIR, ASSET_FILES[asset_key], "Asset")
+
+
+def render_model_info_card(disease_key: str, disease_label: str) -> None:
+    try:
+        bundle = load_model_bundle(disease_key)
+        dataset = load_dataset(disease_key)
+        feature_list = bundle.get("features", bundle.get("numeric_cols", []) + bundle.get("categorical_cols", []))
+        selected_features = bundle.get("selected_features", [])
+        numeric_cols = bundle.get("numeric_cols", [])
+        categorical_cols = bundle.get("categorical_cols", [])
+
+        st.markdown(
+            f"""
+            <div class="section-card">
+                <h4 class="soft-title" style="margin-bottom:0.3rem;">{disease_label} Model</h4>
+                <p class="small-note" style="margin:0.15rem 0;"><b>Algorithm:</b> {bundle.get('model_name', 'Trained Model')}</p>
+                <p class="small-note" style="margin:0.15rem 0;"><b>Dataset Records:</b> {len(dataset):,}</p>
+                <p class="small-note" style="margin:0.15rem 0;"><b>Total Input Features:</b> {len(feature_list)}</p>
+                <p class="small-note" style="margin:0.15rem 0;"><b>Selected Features (SelectKBest):</b> {len(selected_features) if selected_features else len(feature_list)}</p>
+                <p class="small-note" style="margin:0.15rem 0;"><b>Decision Threshold:</b> {float(bundle.get('threshold', 0.5)):.2f}</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        with st.expander(f"{disease_label} feature details"):
+            st.write(f"Numeric Features ({len(numeric_cols)}): " + ", ".join(numeric_cols))
+            st.write(f"Categorical Features ({len(categorical_cols)}): " + ", ".join(categorical_cols))
+            if selected_features:
+                st.write(f"Selected Features ({len(selected_features)}): " + ", ".join([str(f) for f in selected_features]))
+    except Exception as exc:
+        st.error(f"Unable to load {disease_label.lower()} model information: {exc}")
 
 
 def is_missing(value: Any) -> bool:
@@ -577,7 +617,7 @@ def get_health_recommendations(risk_level: str, disease_name: str) -> List[str]:
     ]
 
 
-def render_result_card(prediction: int, probability: float, disease_name: str, threshold: float) -> None:
+def render_result_card(prediction: int, disease_name: str) -> None:
     risk_level = risk_level_from_prediction(prediction)
     css_class = risk_class_for_css(risk_level)
 
@@ -590,9 +630,6 @@ def render_result_card(prediction: int, probability: float, disease_name: str, t
         f"""
         <div class="result-card {css_class}">
             <h4 style="margin-bottom:0.25rem;">Prediction Result: {risk_level}</h4>
-            <p style="margin:0.15rem 0;">Risk Probability: <b>{probability * 100:.2f}%</b></p>
-            <p style="margin:0.15rem 0;">Prediction Confidence: <b>{max(probability, 1-probability) * 100:.2f}%</b></p>
-            <p style="margin:0.15rem 0;">Decision Threshold Used: <b>{threshold:.2f}</b></p>
             <p class="small-note" style="margin-top:0.45rem;">{interpretation_map[risk_level]}</p>
         </div>
         """,
@@ -611,7 +648,8 @@ selected_page = st.sidebar.radio(
         [
         "Home",
         "Diabetes Prediction",
-        "Heart Disease Prediction",
+        "Cardiovascular Prediction",
+        "Model Information",
         ],
 )
 
@@ -626,36 +664,12 @@ if selected_page == "Home":
         <div class="hero-card">
             <h2 class="soft-title">{APP_TITLE}</h2>
             <p class="muted-text">
-                A research-oriented AI healthcare dashboard for early <b>Diabetes</b> and <b>Heart Disease</b> risk prediction.
-                The system demonstrates ML-based preventive screening support with interpretable probability outputs.
+                Welcome to the AI healthcare dashboard for early <b>Diabetes</b> and <b>Cardiovascular Disease</b> risk prediction.
             </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
-
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.markdown("<div class='stat-card'><h4>2</h4><p class='small-note'>Risk Prediction Modules</p></div>", unsafe_allow_html=True)
-    with c2:
-        st.markdown("<div class='stat-card'><h4>5+</h4><p class='small-note'>Algorithms Evaluated</p></div>", unsafe_allow_html=True)
-    with c3:
-        st.markdown("<div class='stat-card'><h4>SelectKBest</h4><p class='small-note'>Feature Selection</p></div>", unsafe_allow_html=True)
-    with c4:
-        st.markdown("<div class='stat-card'><h4>Threshold Tuning</h4><p class='small-note'>Optimized Decisions</p></div>", unsafe_allow_html=True)
-
-    st.markdown("### Why Early Disease Prediction Matters")
-    st.write(
-        "Early detection helps reduce complications, supports timely interventions, and enables personalized preventive care."
-    )
-
-    st.markdown("### ML Technologies Used")
-    st.write("- Logistic Regression, Random Forest, Decision Tree, SVM, XGBoost")
-    st.write("- Data preprocessing with encoding and scaling")
-    st.write("- SMOTE for class balancing")
-    st.write("- SelectKBest for feature selection")
-    st.write("- Cross-validation and threshold optimization")
-
 
 # Diabetes Prediction Page
 elif selected_page == "Diabetes Prediction":
@@ -684,45 +698,66 @@ elif selected_page == "Diabetes Prediction":
         else:
             with st.spinner("Running diabetes risk prediction..."):
                 try:
-                    pred, prob, threshold = run_prediction_pipeline(diabetes_inputs, diabetes_bundle)
+                    pred, _, _ = run_prediction_pipeline(diabetes_inputs, diabetes_bundle)
                     st.success("Prediction completed successfully.")
-                    render_result_card(pred, prob, "Diabetes", threshold)
+                    render_result_card(pred, "Diabetes")
                 except Exception as exc:
                     st.error(f"Prediction failed. Please check inputs/artifacts. Error: {exc}")
 
 
-# Heart Disease Prediction Page
-elif selected_page == "Heart Disease Prediction":
-    st.title("Heart Disease Risk Prediction")
+# Cardiovascular Prediction Page
+elif selected_page == "Cardiovascular Prediction":
+    st.title("Cardiovascular Disease Risk Prediction")
 
     try:
-        heart_bundle = load_model_bundle("heart")
+        cardiovascular_bundle = load_model_bundle("cardiovascular")
     except Exception as exc:
-        st.error(f"Unable to load heart model artifacts: {exc}")
+        st.error(f"Unable to load cardiovascular model artifacts: {exc}")
         st.stop()
 
-    heart_all_features = heart_bundle.get(
+    cardiovascular_all_features = cardiovascular_bundle.get(
         "features",
-        heart_bundle.get("numeric_cols", []) + heart_bundle.get("categorical_cols", []),
+        cardiovascular_bundle.get("numeric_cols", []) + cardiovascular_bundle.get("categorical_cols", []),
     )
 
-    heart_inputs = build_input_form(
-        feature_list=heart_all_features,
-        form_key="heart",
+    cardiovascular_inputs = build_input_form(
+        feature_list=cardiovascular_all_features,
+        form_key="cardiovascular",
     )
 
-    if st.button("Predict Heart Disease Risk", use_container_width=True):
-        valid, missing = validate_inputs(heart_inputs, heart_all_features)
+    if st.button("Predict Cardiovascular Risk", use_container_width=True):
+        valid, missing = validate_inputs(cardiovascular_inputs, cardiovascular_all_features)
         if not valid:
             st.error("Please fill required fields: " + ", ".join(missing))
         else:
-            with st.spinner("Running heart disease risk prediction..."):
+            with st.spinner("Running cardiovascular risk prediction..."):
                 try:
-                    pred, prob, threshold = run_prediction_pipeline(heart_inputs, heart_bundle)
+                    pred, _, _ = run_prediction_pipeline(cardiovascular_inputs, cardiovascular_bundle)
                     st.success("Prediction completed successfully.")
-                    render_result_card(pred, prob, "Heart Disease", threshold)
+                    render_result_card(pred, "Cardiovascular Disease")
                 except Exception as exc:
                     st.error(f"Prediction failed. Please check inputs/artifacts. Error: {exc}")
+
+
+# Model Information Page
+elif selected_page == "Model Information":
+    st.title("Model Information")
+    st.markdown(
+        """
+        <div class="section-card">
+            <p class="muted-text" style="margin:0;">
+                This section provides model and dataset details for both prediction modules.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    left_col, right_col = st.columns(2)
+    with left_col:
+        render_model_info_card("diabetes", "Diabetes")
+    with right_col:
+        render_model_info_card("cardiovascular", "Cardiovascular Disease")
 
 
 # Footer
