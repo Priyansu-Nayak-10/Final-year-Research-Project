@@ -427,12 +427,15 @@ def load_model_bundle(disease_key: str) -> Dict[str, Any]:
         "model": artifact.get("model"),
         "preprocessor": artifact.get("preprocessor"),
         "selector": artifact.get("selector"),
-        "features": artifact.get("features", []),
+        "features": artifact.get("features", artifact.get("feature_columns", [])),
         "selected_features": artifact.get("selected_features", []),
         "numeric_cols": artifact.get("numeric_cols", []),
         "categorical_cols": artifact.get("categorical_cols", []),
         "threshold": artifact.get("threshold", 0.5),
         "model_name": artifact.get("model_name", "Trained Model"),
+        "class_label_map": artifact.get("class_label_map", {0: "Low Risk", 1: "High Risk"}),
+        "positive_class": artifact.get("positive_class", 1),
+        "negative_class": artifact.get("negative_class", 0),
     }
 
     # Optional standalone files (if present in future versions of the project)
@@ -549,7 +552,7 @@ def validate_inputs(inputs: Dict[str, Any], required_features: List[str]) -> Tup
     return len(missing_labels) == 0, missing_labels
 
 
-def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> Tuple[int, float, float]:
+def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> Tuple[Any, float, float]:
     """
     Keep prediction flow aligned with training pipeline:
     1) Encoding + scaling by preprocessor
@@ -582,16 +585,34 @@ def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> T
     else:
         selected_data = processed
 
-    # Step 3: Predict class and disease probability.
-    probability = float(model.predict_proba(selected_data)[0][1])
-    prediction = 1 if probability >= threshold else 0
+    # Step 3: Predict class and positive-class probability.
+    class_values = list(getattr(model, "classes_", [0, 1]))
+    positive_class = bundle.get("positive_class", 1)
+    negative_class = bundle.get("negative_class", 0)
+
+    if positive_class not in class_values:
+        # Fall back to the last class if artifact metadata and model classes diverge.
+        positive_class = class_values[-1]
+
+    if negative_class not in class_values:
+        negative_candidates = [cls for cls in class_values if cls != positive_class]
+        negative_class = negative_candidates[0] if negative_candidates else class_values[0]
+
+    positive_idx = class_values.index(positive_class)
+    probability = float(model.predict_proba(selected_data)[0][positive_idx])
+    prediction = positive_class if probability >= threshold else negative_class
 
     return prediction, probability, threshold
 
 
-def risk_level_from_prediction(prediction: int) -> str:
-    """Convert binary model prediction to risk level label."""
-    return "High Risk" if prediction == 1 else "Low Risk"
+def risk_level_from_prediction(prediction: Any, bundle: Dict[str, Any]) -> str:
+    """Convert binary model prediction to risk level label using artifact mapping."""
+    class_label_map = bundle.get("class_label_map", {0: "Low Risk", 1: "High Risk"})
+    if prediction in class_label_map:
+        return class_label_map[prediction]
+    if str(prediction) in class_label_map:
+        return class_label_map[str(prediction)]
+    return "High Risk" if prediction == bundle.get("positive_class", 1) else "Low Risk"
 
 
 def risk_class_for_css(risk_level: str) -> str:
@@ -617,8 +638,8 @@ def get_health_recommendations(risk_level: str, disease_name: str) -> List[str]:
     ]
 
 
-def render_result_card(prediction: int, disease_name: str) -> None:
-    risk_level = risk_level_from_prediction(prediction)
+def render_result_card(prediction: Any, disease_name: str, bundle: Dict[str, Any]) -> None:
+    risk_level = risk_level_from_prediction(prediction, bundle)
     css_class = risk_class_for_css(risk_level)
 
     interpretation_map = {
@@ -700,7 +721,7 @@ elif selected_page == "Diabetes Prediction":
                 try:
                     pred, _, _ = run_prediction_pipeline(diabetes_inputs, diabetes_bundle)
                     st.success("Prediction completed successfully.")
-                    render_result_card(pred, "Diabetes")
+                    render_result_card(pred, "Diabetes", diabetes_bundle)
                 except Exception as exc:
                     st.error(f"Prediction failed. Please check inputs/artifacts. Error: {exc}")
 
@@ -734,7 +755,7 @@ elif selected_page == "Cardiovascular Prediction":
                 try:
                     pred, _, _ = run_prediction_pipeline(cardiovascular_inputs, cardiovascular_bundle)
                     st.success("Prediction completed successfully.")
-                    render_result_card(pred, "Cardiovascular Disease")
+                    render_result_card(pred, "Cardiovascular Disease", cardiovascular_bundle)
                 except Exception as exc:
                     st.error(f"Prediction failed. Please check inputs/artifacts. Error: {exc}")
 
