@@ -645,6 +645,32 @@ def render_result_card(prediction: int, disease_name: str) -> None:
         st.write(f"- {recommendation}")
 
 
+def prediction_state_key(disease_key: str) -> str:
+    return f"prediction_result_{disease_key}"
+
+
+def save_prediction_result(disease_key: str, prediction: int, probability: float, threshold: float) -> None:
+    st.session_state[prediction_state_key(disease_key)] = {
+        "prediction": int(prediction),
+        "probability": float(probability),
+        "threshold": float(threshold),
+    }
+
+
+def render_saved_prediction_result(disease_key: str, disease_name: str) -> None:
+    saved_result = st.session_state.get(prediction_state_key(disease_key))
+    if not saved_result:
+        return
+
+    render_result_card(int(saved_result["prediction"]), disease_name)
+
+
+def clear_prediction_page_state(page_key: str) -> None:
+    for key in list(st.session_state.keys()):
+        if key.startswith(f"{page_key}_") or key == prediction_state_key(page_key):
+            del st.session_state[key]
+
+
 # Sidebar Navigation
 st.sidebar.markdown("## Navigation")
 selected_page = st.sidebar.radio(
@@ -700,9 +726,7 @@ elif selected_page == "Diabetes Prediction":
         predict_clicked = st.button("Predict Diabetes Risk", use_container_width=True)
     with reset_col:
         if st.button("Clear Inputs", key="reset_diabetes", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                if key.startswith("diabetes_"):
-                    del st.session_state[key]
+            clear_prediction_page_state("diabetes")
             st.rerun()
 
     if predict_clicked:
@@ -712,11 +736,13 @@ elif selected_page == "Diabetes Prediction":
         else:
             with st.spinner("Running diabetes risk prediction..."):
                 try:
-                    pred, _, _ = run_prediction_pipeline(diabetes_inputs, diabetes_bundle)
+                    pred, probability, threshold = run_prediction_pipeline(diabetes_inputs, diabetes_bundle)
+                    save_prediction_result("diabetes", pred, probability, threshold)
                     st.success("Prediction completed successfully.")
-                    render_result_card(pred, "Diabetes")
                 except Exception as exc:
                     st.error(f"Prediction failed. Please check inputs/artifacts. Error: {exc}")
+
+    render_saved_prediction_result("diabetes", "Diabetes")
 
 
 # Cardiovascular Prediction Page
@@ -744,9 +770,7 @@ elif selected_page == "Cardiovascular Prediction":
         predict_clicked = st.button("Predict Cardiovascular Risk", use_container_width=True)
     with reset_col:
         if st.button("Clear Inputs", key="reset_cardiovascular", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                if key.startswith("cardiovascular_"):
-                    del st.session_state[key]
+            clear_prediction_page_state("cardiovascular")
             st.rerun()
 
     if predict_clicked:
@@ -756,11 +780,13 @@ elif selected_page == "Cardiovascular Prediction":
         else:
             with st.spinner("Running cardiovascular risk prediction..."):
                 try:
-                    pred, _, _ = run_prediction_pipeline(cardiovascular_inputs, cardiovascular_bundle)
+                    pred, probability, threshold = run_prediction_pipeline(cardiovascular_inputs, cardiovascular_bundle)
+                    save_prediction_result("cardiovascular", pred, probability, threshold)
                     st.success("Prediction completed successfully.")
-                    render_result_card(pred, "Cardiovascular Disease")
                 except Exception as exc:
                     st.error(f"Prediction failed. Please check inputs/artifacts. Error: {exc}")
+
+    render_saved_prediction_result("cardiovascular", "Cardiovascular Disease")
 
 
 # Model Information Page
