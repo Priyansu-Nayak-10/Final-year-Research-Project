@@ -498,9 +498,14 @@ def is_missing(value: Any) -> bool:
     return value is None or value == "Select"
 
 
+def get_form_version(page_key: str) -> int:
+    return int(st.session_state.get(f"{page_key}_form_version", 0))
+
+
 def build_input_form(feature_list: List[str], form_key: str) -> Dict[str, Any]:
     """Render a dynamic input form using selected raw features only."""
     user_values: Dict[str, Any] = {}
+    form_version = get_form_version(form_key)
 
     columns = st.columns(4)
     for idx, feature in enumerate(feature_list):
@@ -514,7 +519,7 @@ def build_input_form(feature_list: List[str], form_key: str) -> Dict[str, Any]:
                     f"{feature}",
                     value=None,
                     placeholder="Enter value",
-                    key=f"{form_key}_{feature}",
+                    key=f"{form_key}_{feature}_v{form_version}",
                 )
             continue
 
@@ -528,7 +533,7 @@ def build_input_form(feature_list: List[str], form_key: str) -> Dict[str, Any]:
                     step=float(cfg["step"]),
                     value=None,
                     placeholder=cfg["placeholder"],
-                    key=f"{form_key}_{feature}",
+                    key=f"{form_key}_{feature}_v{form_version}",
                 )
             else:
                 options = ["Select"] + cfg["options"]
@@ -536,7 +541,7 @@ def build_input_form(feature_list: List[str], form_key: str) -> Dict[str, Any]:
                     cfg["label"],
                     options=options,
                     index=0,
-                    key=f"{form_key}_{feature}",
+                    key=f"{form_key}_{feature}_v{form_version}",
                 )
 
     return user_values
@@ -666,9 +671,14 @@ def render_saved_prediction_result(disease_key: str, disease_name: str) -> None:
 
 
 def clear_prediction_page_state(page_key: str) -> None:
+    version_key = f"{page_key}_form_version"
+    current_version = int(st.session_state.get(version_key, 0))
     for key in list(st.session_state.keys()):
+        if key == version_key:
+            continue
         if key.startswith(f"{page_key}_") or key == prediction_state_key(page_key):
             del st.session_state[key]
+    st.session_state[version_key] = current_version + 1
 
 
 # Sidebar Navigation
