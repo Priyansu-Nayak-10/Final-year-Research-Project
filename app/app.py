@@ -124,12 +124,17 @@ st.markdown(
     }
 
     /* Reset / Clear Form button (red) */
-    div[data-testid="column"]:last-child .stButton > button {
+    div[data-testid="column"]:nth-of-type(2) .stButton > button {
         background: #dc2626 !important;
+        color: #ffffff !important;
         border: 1px solid #b91c1c !important;
+        border-radius: 10px;
+        padding: 0.6rem 1rem;
+        font-weight: 600;
     }
-    div[data-testid="column"]:last-child .stButton > button:hover {
+    div[data-testid="column"]:nth-of-type(2) .stButton > button:hover {
         background: #b91c1c !important;
+        color: #ffffff !important;
     }
 
 
