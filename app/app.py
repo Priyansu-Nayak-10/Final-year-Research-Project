@@ -109,7 +109,7 @@ st.markdown(
         color: #4b5563;
     }
 
-    .stButton > button {
+    .stButton > button[kind="primary"] {
         background: #16a34a !important;
         color: #ffffff !important;
         border-radius: 10px;
@@ -118,13 +118,13 @@ st.markdown(
         font-weight: 600;
     }
 
-    .stButton > button:hover {
+    .stButton > button[kind="primary"]:hover {
         background: #15803d !important;
         color: #ffffff !important;
     }
 
     /* Reset / Clear Form button (red) */
-    div[data-testid="column"]:nth-of-type(2) .stButton > button {
+    .stButton > button[kind="secondary"] {
         background: #dc2626 !important;
         color: #ffffff !important;
         border: 1px solid #b91c1c !important;
@@ -132,7 +132,7 @@ st.markdown(
         padding: 0.6rem 1rem;
         font-weight: 600;
     }
-    div[data-testid="column"]:nth-of-type(2) .stButton > button:hover {
+    .stButton > button[kind="secondary"]:hover {
         background: #b91c1c !important;
         color: #ffffff !important;
     }
@@ -738,9 +738,9 @@ elif selected_page == "Diabetes Prediction":
 
     btn_col, reset_col = st.columns([3, 1])
     with btn_col:
-        predict_clicked = st.button("Predict Diabetes Risk", use_container_width=True)
+        predict_clicked = st.button("Predict Diabetes Risk", use_container_width=True, type="primary")
     with reset_col:
-        if st.button("Clear Inputs", key="reset_diabetes", use_container_width=True):
+        if st.button("Clear Inputs", key="reset_diabetes", use_container_width=True, type="secondary"):
             clear_prediction_page_state("diabetes")
             st.rerun()
 
@@ -782,9 +782,9 @@ elif selected_page == "Cardiovascular Prediction":
 
     btn_col, reset_col = st.columns([3, 1])
     with btn_col:
-        predict_clicked = st.button("Predict Cardiovascular Risk", use_container_width=True)
+        predict_clicked = st.button("Predict Cardiovascular Risk", use_container_width=True, type="primary")
     with reset_col:
-        if st.button("Clear Inputs", key="reset_cardiovascular", use_container_width=True):
+        if st.button("Clear Inputs", key="reset_cardiovascular", use_container_width=True, type="secondary"):
             clear_prediction_page_state("cardiovascular")
             st.rerun()
 
