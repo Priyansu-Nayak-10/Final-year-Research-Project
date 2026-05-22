@@ -34,7 +34,7 @@ def resolve_project_root() -> Path:
 BASE_DIR = resolve_project_root()
 MODEL_DIR = BASE_DIR / "models"
 DATA_DIR = BASE_DIR / "data"
-ASSETS_DIR = BASE_DIR / "Files"
+
 
 
 # Page Configuration
@@ -123,6 +123,16 @@ st.markdown(
         color: #ffffff !important;
     }
 
+    /* Reset / Clear Form button (red) */
+    div[data-testid="column"]:last-child .stButton > button {
+        background: #dc2626 !important;
+        border: 1px solid #b91c1c !important;
+    }
+    div[data-testid="column"]:last-child .stButton > button:hover {
+        background: #b91c1c !important;
+    }
+
+
     /* Number input +/- controls in green */
     div[data-testid="stNumberInput"] button {
         background: #16a34a !important;
@@ -187,7 +197,7 @@ st.markdown(
 )
 
 
-# App-Level Constants
+# Constants + Metadata
 APP_TITLE = "AI-Based Early Disease Risk Prediction System Using Machine Learning"
 
 MODEL_FILES = {
@@ -200,12 +210,7 @@ DATASET_FILES = {
     "cardiovascular": "cardiovascular.csv",
 }
 
-ASSET_FILES = {
-    "model_architecture": "model architecture.png",
-    "model_methodology": "Model Methodology.png",
-}
 
-# Feature UI Config — labels, field types, and valid input ranges for each model feature
 FEATURE_UI_CONFIG = {
     "age": {
         "label": "Age",
@@ -428,15 +433,12 @@ def load_model_bundle(disease_key: str) -> Dict[str, Any]:
         "model": artifact.get("model"),
         "preprocessor": artifact.get("preprocessor"),
         "selector": artifact.get("selector"),
-        "features": artifact.get("features", artifact.get("feature_columns", [])),
+        "features": artifact.get("features", []),
         "selected_features": artifact.get("selected_features", []),
         "numeric_cols": artifact.get("numeric_cols", []),
         "categorical_cols": artifact.get("categorical_cols", []),
         "threshold": artifact.get("threshold", 0.5),
         "model_name": artifact.get("model_name", "Trained Model"),
-        "class_label_map": artifact.get("class_label_map", {0: "Low Risk", 1: "High Risk"}),
-        "positive_class": artifact.get("positive_class", 1),
-        "negative_class": artifact.get("negative_class", 0),
     }
 
     # Optional standalone files (if present in future versions of the project)
@@ -458,8 +460,6 @@ def load_dataset(disease_key: str) -> pd.DataFrame:
     return pd.read_csv(dataset_path)
 
 
-def get_asset_path(asset_key: str) -> Path:
-    return _resolve_existing_path(ASSETS_DIR, ASSET_FILES[asset_key], "Asset")
 
 
 def render_model_info_card(disease_key: str, disease_label: str) -> None:
@@ -495,7 +495,7 @@ def render_model_info_card(disease_key: str, disease_label: str) -> None:
 
 
 def is_missing(value: Any) -> bool:
-    return value is None or value == "" or value == "Select"
+    return value is None or value == "Select"
 
 
 def build_input_form(feature_list: List[str], form_key: str) -> Dict[str, Any]:
@@ -510,8 +510,9 @@ def build_input_form(feature_list: List[str], form_key: str) -> Dict[str, Any]:
         if cfg is None:
             # Generic fallback for unknown numeric-like feature.
             with col:
-                user_values[feature] = st.text_input(
+                user_values[feature] = st.number_input(
                     f"{feature}",
+                    value=None,
                     placeholder="Enter value",
                     key=f"{form_key}_{feature}",
                 )
@@ -520,8 +521,12 @@ def build_input_form(feature_list: List[str], form_key: str) -> Dict[str, Any]:
         with col:
             if cfg["type"] == "number":
                 label_with_range = f"{cfg['label']} [{cfg['min']} - {cfg['max']}]"
-                user_values[feature] = st.text_input(
+                user_values[feature] = st.number_input(
                     label_with_range,
+                    min_value=float(cfg["min"]),
+                    max_value=float(cfg["max"]),
+                    step=float(cfg["step"]),
+                    value=None,
                     placeholder=cfg["placeholder"],
                     key=f"{form_key}_{feature}",
                 )
@@ -537,67 +542,24 @@ def build_input_form(feature_list: List[str], form_key: str) -> Dict[str, Any]:
     return user_values
 
 
-def clear_form_inputs(form_key: str) -> None:
-    # Set a private flag so apply_clear_if_requested can delete widget keys on next rerun
-    st.session_state[f"_clear_{form_key}"] = True
-
-
-def apply_clear_if_requested(feature_list: List[str], form_key: str) -> None:
-    # Must be called BEFORE form widgets are built — deletes keys so they reset to defaults
-    if st.session_state.pop(f"_clear_{form_key}", False):
-        for feature in feature_list:
-            key = f"{form_key}_{feature}"
-            if key in st.session_state:
-                del st.session_state[key]
-
-
-# Input Validation and Processing
 def validate_inputs(inputs: Dict[str, Any], required_features: List[str]) -> Tuple[bool, List[str]]:
-    # Checks each field: empty, non-numeric, and out-of-range values
-    errors = []
+    """Simple validation for required selected fields."""
+    missing_labels = []
     for feature in required_features:
         value = inputs.get(feature)
-        cfg = FEATURE_UI_CONFIG.get(feature, {})
-        label = cfg.get("label", feature)
-
         if is_missing(value):
-            errors.append(f"'{label}' is required.")
-            continue
-
-        if cfg.get("type") == "number":
-            try:
-                num = float(value)
-            except (ValueError, TypeError):
-                errors.append(f"'{label}' must be a valid number.")
-                continue
-            f_min = cfg.get("min")
-            f_max = cfg.get("max")
-            if f_min is not None and num < f_min:
-                errors.append(f"'{label}' must be ≥ {f_min} (entered: {num}).")
-            elif f_max is not None and num > f_max:
-                errors.append(f"'{label}' must be ≤ {f_max} (entered: {num}).")
-
-    return len(errors) == 0, errors
+            label = FEATURE_UI_CONFIG.get(feature, {}).get("label", feature)
+            missing_labels.append(label)
+    return len(missing_labels) == 0, missing_labels
 
 
-def coerce_feature_values(inputs: Dict[str, Any], feature_names: List[str]) -> Dict[str, Any]:
-    """Convert text-entered numeric values back to floats before inference."""
-    coerced_inputs: Dict[str, Any] = {}
-    for feature in feature_names:
-        value = inputs.get(feature)
-        cfg = FEATURE_UI_CONFIG.get(feature)
-
-        if cfg and cfg["type"] == "number":
-            coerced_inputs[feature] = float(value)
-        else:
-            coerced_inputs[feature] = value
-
-    return coerced_inputs
-
-
-# Prediction Pipeline
-def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> Tuple[Any, float, float]:
-    # Runs inference aligned with training: preprocess → select features → predict
+def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> Tuple[int, float, float]:
+    """
+    Keep prediction flow aligned with training pipeline:
+    1) Encoding + scaling by preprocessor
+    2) Feature selection by SelectKBest
+    3) Prediction + probability
+    """
     model = bundle["model"]
     preprocessor = bundle["preprocessor"]
     selector = bundle["selector"]
@@ -605,7 +567,7 @@ def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> T
     threshold = float(bundle.get("threshold", 0.5))
 
     input_cols = bundle.get("features", bundle.get("numeric_cols", []) + bundle.get("categorical_cols", []))
-    input_df = pd.DataFrame([coerce_feature_values(inputs, input_cols)])
+    input_df = pd.DataFrame([inputs])
 
     # Step 1: Encode categorical + scale numerical features.
     processed = preprocessor.transform(input_df[input_cols])
@@ -624,34 +586,16 @@ def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> T
     else:
         selected_data = processed
 
-    # Step 3: Predict class and positive-class probability.
-    class_values = list(getattr(model, "classes_", [0, 1]))
-    positive_class = bundle.get("positive_class", 1)
-    negative_class = bundle.get("negative_class", 0)
-
-    if positive_class not in class_values:
-        # Fall back to the last class if artifact metadata and model classes diverge.
-        positive_class = class_values[-1]
-
-    if negative_class not in class_values:
-        negative_candidates = [cls for cls in class_values if cls != positive_class]
-        negative_class = negative_candidates[0] if negative_candidates else class_values[0]
-
-    positive_idx = class_values.index(positive_class)
-    probability = float(model.predict_proba(selected_data)[0][positive_idx])
-    prediction = positive_class if probability >= threshold else negative_class
+    # Step 3: Predict class and disease probability.
+    probability = float(model.predict_proba(selected_data)[0][1])
+    prediction = 1 if probability >= threshold else 0
 
     return prediction, probability, threshold
 
 
-def risk_level_from_prediction(prediction: Any, bundle: Dict[str, Any]) -> str:
-    """Convert binary model prediction to risk level label using artifact mapping."""
-    class_label_map = bundle.get("class_label_map", {0: "Low Risk", 1: "High Risk"})
-    if prediction in class_label_map:
-        return class_label_map[prediction]
-    if str(prediction) in class_label_map:
-        return class_label_map[str(prediction)]
-    return "High Risk" if prediction == bundle.get("positive_class", 1) else "Low Risk"
+def risk_level_from_prediction(prediction: int) -> str:
+    """Convert binary model prediction to risk level label."""
+    return "High Risk" if prediction == 1 else "Low Risk"
 
 
 def risk_class_for_css(risk_level: str) -> str:
@@ -677,8 +621,8 @@ def get_health_recommendations(risk_level: str, disease_name: str) -> List[str]:
     ]
 
 
-def render_result_card(prediction: Any, disease_name: str, bundle: Dict[str, Any]) -> None:
-    risk_level = risk_level_from_prediction(prediction, bundle)
+def render_result_card(prediction: int, disease_name: str) -> None:
+    risk_level = risk_level_from_prediction(prediction)
     css_class = risk_class_for_css(risk_level)
 
     interpretation_map = {
@@ -746,34 +690,31 @@ elif selected_page == "Diabetes Prediction":
         diabetes_bundle.get("numeric_cols", []) + diabetes_bundle.get("categorical_cols", []),
     )
 
-    # Delete widget keys if a clear was requested on the previous run
-    apply_clear_if_requested(diabetes_all_features, "diabetes")
-
     diabetes_inputs = build_input_form(
         feature_list=diabetes_all_features,
         form_key="diabetes",
     )
 
-    # Action buttons: Predict and Clear
-    btn_col1, btn_col2 = st.columns([4, 1])
-    with btn_col1:
-        predict_btn = st.button("Predict Diabetes Risk", use_container_width=True)
-    with btn_col2:
-        if st.button("\U0001f5d1\ufe0f Clear Inputs", key="clear_diabetes", use_container_width=True):
-            clear_form_inputs("diabetes")
+    btn_col, reset_col = st.columns([3, 1])
+    with btn_col:
+        predict_clicked = st.button("Predict Diabetes Risk", use_container_width=True)
+    with reset_col:
+        if st.button("Clear Inputs", key="reset_diabetes", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                if key.startswith("diabetes_"):
+                    del st.session_state[key]
             st.rerun()
 
-    if predict_btn:
-        valid, errors = validate_inputs(diabetes_inputs, diabetes_all_features)
+    if predict_clicked:
+        valid, missing = validate_inputs(diabetes_inputs, diabetes_all_features)
         if not valid:
-            for err in errors:
-                st.error(err)
+            st.error("Please fill required fields: " + ", ".join(missing))
         else:
             with st.spinner("Running diabetes risk prediction..."):
                 try:
                     pred, _, _ = run_prediction_pipeline(diabetes_inputs, diabetes_bundle)
                     st.success("Prediction completed successfully.")
-                    render_result_card(pred, "Diabetes", diabetes_bundle)
+                    render_result_card(pred, "Diabetes")
                 except Exception as exc:
                     st.error(f"Prediction failed. Please check inputs/artifacts. Error: {exc}")
 
@@ -793,34 +734,31 @@ elif selected_page == "Cardiovascular Prediction":
         cardiovascular_bundle.get("numeric_cols", []) + cardiovascular_bundle.get("categorical_cols", []),
     )
 
-    # Delete widget keys if a clear was requested on the previous run
-    apply_clear_if_requested(cardiovascular_all_features, "cardiovascular")
-
     cardiovascular_inputs = build_input_form(
         feature_list=cardiovascular_all_features,
         form_key="cardiovascular",
     )
 
-    # Action buttons: Predict and Clear
-    btn_col1, btn_col2 = st.columns([4, 1])
-    with btn_col1:
-        predict_btn = st.button("Predict Cardiovascular Risk", use_container_width=True)
-    with btn_col2:
-        if st.button("\U0001f5d1\ufe0f Clear Inputs", key="clear_cardiovascular", use_container_width=True):
-            clear_form_inputs("cardiovascular")
+    btn_col, reset_col = st.columns([3, 1])
+    with btn_col:
+        predict_clicked = st.button("Predict Cardiovascular Risk", use_container_width=True)
+    with reset_col:
+        if st.button("Clear Inputs", key="reset_cardiovascular", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                if key.startswith("cardiovascular_"):
+                    del st.session_state[key]
             st.rerun()
 
-    if predict_btn:
-        valid, errors = validate_inputs(cardiovascular_inputs, cardiovascular_all_features)
+    if predict_clicked:
+        valid, missing = validate_inputs(cardiovascular_inputs, cardiovascular_all_features)
         if not valid:
-            for err in errors:
-                st.error(err)
+            st.error("Please fill required fields: " + ", ".join(missing))
         else:
             with st.spinner("Running cardiovascular risk prediction..."):
                 try:
                     pred, _, _ = run_prediction_pipeline(cardiovascular_inputs, cardiovascular_bundle)
                     st.success("Prediction completed successfully.")
-                    render_result_card(pred, "Cardiovascular Disease", cardiovascular_bundle)
+                    render_result_card(pred, "Cardiovascular Disease")
                 except Exception as exc:
                     st.error(f"Prediction failed. Please check inputs/artifacts. Error: {exc}")
 
