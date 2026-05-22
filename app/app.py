@@ -187,7 +187,7 @@ st.markdown(
 )
 
 
-# Constants + Metadata
+# App-Level Constants
 APP_TITLE = "AI-Based Early Disease Risk Prediction System Using Machine Learning"
 
 MODEL_FILES = {
@@ -205,6 +205,7 @@ ASSET_FILES = {
     "model_methodology": "Model Methodology.png",
 }
 
+# Feature UI Config — labels, field types, and valid input ranges for each model feature
 FEATURE_UI_CONFIG = {
     "age": {
         "label": "Age",
@@ -494,7 +495,7 @@ def render_model_info_card(disease_key: str, disease_label: str) -> None:
 
 
 def is_missing(value: Any) -> bool:
-    return value is None or value == "Select"
+    return value is None or value == "" or value == "Select"
 
 
 def build_input_form(feature_list: List[str], form_key: str) -> Dict[str, Any]:
@@ -509,9 +510,8 @@ def build_input_form(feature_list: List[str], form_key: str) -> Dict[str, Any]:
         if cfg is None:
             # Generic fallback for unknown numeric-like feature.
             with col:
-                user_values[feature] = st.number_input(
+                user_values[feature] = st.text_input(
                     f"{feature}",
-                    value=None,
                     placeholder="Enter value",
                     key=f"{form_key}_{feature}",
                 )
@@ -520,12 +520,8 @@ def build_input_form(feature_list: List[str], form_key: str) -> Dict[str, Any]:
         with col:
             if cfg["type"] == "number":
                 label_with_range = f"{cfg['label']} [{cfg['min']} - {cfg['max']}]"
-                user_values[feature] = st.number_input(
+                user_values[feature] = st.text_input(
                     label_with_range,
-                    min_value=float(cfg["min"]),
-                    max_value=float(cfg["max"]),
-                    step=float(cfg["step"]),
-                    value=None,
                     placeholder=cfg["placeholder"],
                     key=f"{form_key}_{feature}",
                 )
@@ -541,24 +537,67 @@ def build_input_form(feature_list: List[str], form_key: str) -> Dict[str, Any]:
     return user_values
 
 
+def clear_form_inputs(form_key: str) -> None:
+    # Set a private flag so apply_clear_if_requested can delete widget keys on next rerun
+    st.session_state[f"_clear_{form_key}"] = True
+
+
+def apply_clear_if_requested(feature_list: List[str], form_key: str) -> None:
+    # Must be called BEFORE form widgets are built — deletes keys so they reset to defaults
+    if st.session_state.pop(f"_clear_{form_key}", False):
+        for feature in feature_list:
+            key = f"{form_key}_{feature}"
+            if key in st.session_state:
+                del st.session_state[key]
+
+
+# Input Validation and Processing
 def validate_inputs(inputs: Dict[str, Any], required_features: List[str]) -> Tuple[bool, List[str]]:
-    """Simple validation for required selected fields."""
-    missing_labels = []
+    # Checks each field: empty, non-numeric, and out-of-range values
+    errors = []
     for feature in required_features:
         value = inputs.get(feature)
+        cfg = FEATURE_UI_CONFIG.get(feature, {})
+        label = cfg.get("label", feature)
+
         if is_missing(value):
-            label = FEATURE_UI_CONFIG.get(feature, {}).get("label", feature)
-            missing_labels.append(label)
-    return len(missing_labels) == 0, missing_labels
+            errors.append(f"'{label}' is required.")
+            continue
+
+        if cfg.get("type") == "number":
+            try:
+                num = float(value)
+            except (ValueError, TypeError):
+                errors.append(f"'{label}' must be a valid number.")
+                continue
+            f_min = cfg.get("min")
+            f_max = cfg.get("max")
+            if f_min is not None and num < f_min:
+                errors.append(f"'{label}' must be ≥ {f_min} (entered: {num}).")
+            elif f_max is not None and num > f_max:
+                errors.append(f"'{label}' must be ≤ {f_max} (entered: {num}).")
+
+    return len(errors) == 0, errors
 
 
+def coerce_feature_values(inputs: Dict[str, Any], feature_names: List[str]) -> Dict[str, Any]:
+    """Convert text-entered numeric values back to floats before inference."""
+    coerced_inputs: Dict[str, Any] = {}
+    for feature in feature_names:
+        value = inputs.get(feature)
+        cfg = FEATURE_UI_CONFIG.get(feature)
+
+        if cfg and cfg["type"] == "number":
+            coerced_inputs[feature] = float(value)
+        else:
+            coerced_inputs[feature] = value
+
+    return coerced_inputs
+
+
+# Prediction Pipeline
 def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> Tuple[Any, float, float]:
-    """
-    Keep prediction flow aligned with training pipeline:
-    1) Encoding + scaling by preprocessor
-    2) Feature selection by SelectKBest
-    3) Prediction + probability
-    """
+    # Runs inference aligned with training: preprocess → select features → predict
     model = bundle["model"]
     preprocessor = bundle["preprocessor"]
     selector = bundle["selector"]
@@ -566,7 +605,7 @@ def run_prediction_pipeline(inputs: Dict[str, Any], bundle: Dict[str, Any]) -> T
     threshold = float(bundle.get("threshold", 0.5))
 
     input_cols = bundle.get("features", bundle.get("numeric_cols", []) + bundle.get("categorical_cols", []))
-    input_df = pd.DataFrame([inputs])
+    input_df = pd.DataFrame([coerce_feature_values(inputs, input_cols)])
 
     # Step 1: Encode categorical + scale numerical features.
     processed = preprocessor.transform(input_df[input_cols])
@@ -707,15 +746,28 @@ elif selected_page == "Diabetes Prediction":
         diabetes_bundle.get("numeric_cols", []) + diabetes_bundle.get("categorical_cols", []),
     )
 
+    # Delete widget keys if a clear was requested on the previous run
+    apply_clear_if_requested(diabetes_all_features, "diabetes")
+
     diabetes_inputs = build_input_form(
         feature_list=diabetes_all_features,
         form_key="diabetes",
     )
 
-    if st.button("Predict Diabetes Risk", use_container_width=True):
-        valid, missing = validate_inputs(diabetes_inputs, diabetes_all_features)
+    # Action buttons: Predict and Clear
+    btn_col1, btn_col2 = st.columns([4, 1])
+    with btn_col1:
+        predict_btn = st.button("Predict Diabetes Risk", use_container_width=True)
+    with btn_col2:
+        if st.button("\U0001f5d1\ufe0f Clear Inputs", key="clear_diabetes", use_container_width=True):
+            clear_form_inputs("diabetes")
+            st.rerun()
+
+    if predict_btn:
+        valid, errors = validate_inputs(diabetes_inputs, diabetes_all_features)
         if not valid:
-            st.error("Please fill required fields: " + ", ".join(missing))
+            for err in errors:
+                st.error(err)
         else:
             with st.spinner("Running diabetes risk prediction..."):
                 try:
@@ -741,15 +793,28 @@ elif selected_page == "Cardiovascular Prediction":
         cardiovascular_bundle.get("numeric_cols", []) + cardiovascular_bundle.get("categorical_cols", []),
     )
 
+    # Delete widget keys if a clear was requested on the previous run
+    apply_clear_if_requested(cardiovascular_all_features, "cardiovascular")
+
     cardiovascular_inputs = build_input_form(
         feature_list=cardiovascular_all_features,
         form_key="cardiovascular",
     )
 
-    if st.button("Predict Cardiovascular Risk", use_container_width=True):
-        valid, missing = validate_inputs(cardiovascular_inputs, cardiovascular_all_features)
+    # Action buttons: Predict and Clear
+    btn_col1, btn_col2 = st.columns([4, 1])
+    with btn_col1:
+        predict_btn = st.button("Predict Cardiovascular Risk", use_container_width=True)
+    with btn_col2:
+        if st.button("\U0001f5d1\ufe0f Clear Inputs", key="clear_cardiovascular", use_container_width=True):
+            clear_form_inputs("cardiovascular")
+            st.rerun()
+
+    if predict_btn:
+        valid, errors = validate_inputs(cardiovascular_inputs, cardiovascular_all_features)
         if not valid:
-            st.error("Please fill required fields: " + ", ".join(missing))
+            for err in errors:
+                st.error(err)
         else:
             with st.spinner("Running cardiovascular risk prediction..."):
                 try:
