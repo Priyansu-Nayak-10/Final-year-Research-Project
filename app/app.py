@@ -699,7 +699,6 @@ selected_page = st.sidebar.radio(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.info("This app is for academic/research support only, not a final medical diagnosis.")
 
 
 # Home Page
