@@ -446,11 +446,7 @@ def load_model_bundle(disease_key: str) -> Dict[str, Any]:
         "model_name": artifact.get("model_name", "Trained Model"),
     }
 
-    # Optional standalone files (if present in future versions of the project)
-    for key in ["features", "selector", "selected_features"]:
-        component_path = MODEL_DIR / f"{disease_key}_{key}.pkl"
-        if component_path.exists():
-            bundle[key] = joblib.load(component_path)
+    # Only load the primary artifact; do not attempt to load optional standalone components.
 
     if bundle["model"] is None or bundle["preprocessor"] is None:
         raise ValueError(f"Incomplete model bundle for '{disease_key}': missing model or preprocessor.")
